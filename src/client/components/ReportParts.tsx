@@ -165,17 +165,15 @@ export function ResultComparison({
   labels = ['Previous', 'This draw'],
   missing = ['No earlier result', 'Not tested'],
   drawDate,
-  showPercent = true,
 }: {
   before?: Result
   after?: Result
   labels?: [string, string]
   missing?: [string, string]
   drawDate?: string
-  showPercent?: boolean
 }) {
   const change = resultChange(before, after)
-  const pct = showPercent && change.unit && before?.value_numeric != null && before.value_numeric > 0 && after?.value_numeric != null ? formatPct(after.value_numeric / before.value_numeric - 1) : null
+  const pct = change.ratio != null ? formatPct(change.ratio) : null
   const cell = 'min-w-0 px-3 py-2.5 sm:px-4'
   return (
     <dl className="m-0 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-line tabular">

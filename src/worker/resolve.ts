@@ -168,7 +168,7 @@ const NEAR_DAYS = 5
  * collection. Text values (Negative, Clear) repeat too often to count.
  */
 export function nearDuplicate(panel: ExtractedPanel, byDate: SavedByDate): ExtractedPanel['near_duplicate'] {
-  if (!panel.draw_date || !/^\d{4}-\d{2}-\d{2}$/.test(panel.draw_date)) return null
+  if (!isValidDate(panel.draw_date)) return null
   const rows = panel.results.filter((r) => r.marker_id && parseLabValue(r.raw_value).numeric != null)
   const compare = (date: string) => {
     const saved = byDate.get(date)?.values

@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { categoryLabel, sortCategories } from '../../shared/categories'
 import { activeOn } from '../../shared/events'
-import { formatDate } from '../../shared/dates'
+import { formatDate, MONTHS } from '../../shared/dates'
 import { positionInRange, resultStatus, statusTone } from '../../shared/semantics'
 import { mean, stdev } from '../../shared/stats'
 import type { MarkerSeries, Result } from '../../shared/types'
@@ -184,7 +184,6 @@ export function GridPage() {
   )
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 function ordinal(n: number): string {
   const teen = n % 100 >= 11 && n % 100 <= 13
   return n + (teen ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')

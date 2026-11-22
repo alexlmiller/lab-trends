@@ -80,7 +80,12 @@ describe('reported comparisons', () => {
     expect(relativeToReference(result({ comparator: 'text', value_numeric: null, ref_low: 2 }))).toBeUndefined()
   })
   it('shows differences only for comparable exact measurements', () => {
-    expect(resultChange(result(), result({ value_numeric: 3.3 }))).toEqual({ value: '+0.3', unit: 'mg/L', note: 'Higher' })
+    const up = resultChange(result(), result({ value_numeric: 3.3 }))
+    expect(up).toMatchObject({ value: '+0.3', unit: 'mg/L', note: 'Higher' })
+    expect(up.ratio).toBeCloseTo(0.1)
+    // No percentage from zero, and none where no difference is given.
+    expect(resultChange(result({ value_numeric: 0 }), result()).ratio).toBeUndefined()
+    expect(resultChange(result(), result({ comparator: '<' })).ratio).toBeUndefined()
     expect(resultChange(result({ raw_units: 'µg/L' }), result({ raw_units: 'ug/L', value_numeric: 0 })).value).toBe('−3')
     for (const other of [undefined, result({ comparator: '<' }), result({ raw_units: null }), result({ raw_units: 'mg/dL' })])
       expect(resultChange(result(), other).value).toBe('—')

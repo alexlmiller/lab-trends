@@ -8,7 +8,8 @@ import type { Candidate, CommitSummary, ExtractedResult, ExtractionDocument, Imp
 import { Icon } from '../components/Icon'
 import { MarkerPicker } from '../components/MarkerPicker'
 import { Alert, Button, Card, cx, Field, inputClass, PageHeader, Spinner } from '../components/ui'
-import { api, ApiError } from '../lib/api'
+import { useAction } from '../lib/action'
+import { api } from '../lib/api'
 import { useData, useDataset } from '../lib/data'
 import { plural } from '../lib/format'
 import { drawPath } from '../lib/history'
@@ -160,7 +161,7 @@ export function ImportReviewPage() {
   const [docs, setDocs] = useState<Record<string, ExtractionDocument>>({})
   const [dirty, setDirty] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const act = useAction()
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [summary, setSummary] = useState<CommitSummary | null>(null)
 
@@ -368,45 +369,37 @@ export function ImportReviewPage() {
             variant={confirmDiscard ? 'danger' : 'ghost'}
             title="Deletes the drafts and the uploaded files"
             onBlur={() => setConfirmDiscard(false)}
-            onClick={async () => {
+            onClick={() => {
               // Discarding deletes the uploads, so it takes a second press.
               if (!confirmDiscard) return setConfirmDiscard(true)
-              try {
+              void act.run(async () => {
                 await api.post(`/subjects/${ds.subjectId}/imports/${batchId}/discard`)
                 navigate('/import')
-              } catch (e) {
-                setError((e as Error).message)
-              }
+              })
             }}
           >
             {confirmDiscard ? 'Delete this import?' : 'Discard import'}
           </Button>
-          {dirty.size ? (
-            <Button onClick={() => saveAll().catch((e: Error) => setError(e.message))}>Save draft</Button>
-          ) : null}
+          {dirty.size ? <Button onClick={() => act.run(saveAll)}>Save draft</Button> : null}
           <Button
             variant="primary"
-            busy={busy}
+            busy={act.busy}
             disabled={pending || (!includedCount && !tagUpdates) || missingDates || unmapped}
             title={missingDates ? 'Set a collection date for every draw' : unmapped ? 'Map every row to a marker' : undefined}
-            onClick={async () => {
-              setBusy(true)
-              try {
+            onClick={() =>
+              act.run(async () => {
                 await saveAll()
-                const s = await api.post<CommitSummary>(`/subjects/${ds.subjectId}/imports/${batchId}/commit`)
-                setSummary(s)
+                setSummary(await api.post<CommitSummary>(`/subjects/${ds.subjectId}/imports/${batchId}/commit`))
                 await ds.reload()
-              } catch (e) {
-                setError(e instanceof ApiError ? e.message : String(e))
-              } finally {
-                setBusy(false)
-              }
-            }}
+              })
+            }
           >
             {!includedCount && tagUpdates ? `Save context for ${plural(tagUpdates, 'draw')}` : `Commit ${plural(includedCount, 'result')}${isShared ? ' as one draw' : ''}`}
           </Button>
         </div>
       </div>
+      {/* Something that went wrong while saving is shown here, with the draft still on the page to fix. */}
+      {act.error ? <Alert tone="error">{act.error}</Alert> : null}
       {missingDates ? <Alert tone="warn">{isShared ? 'Set the collection date in the draw details before committing.' : 'One or more draws has no collection date. Set it before committing.'}</Alert> : null}
 
       {canShare ? (
@@ -430,23 +423,23 @@ export function ImportReviewPage() {
           subjectId={ds.subjectId}
           onChange={(fn) => update(c.id, fn)}
           onUseDate={(pi, date) =>
-            isShared ? setSharedField('draw_date', date) : void updateAndSave(c.id, (d) => void (d.panels[pi].draw_date = date)).catch((e: Error) => setError(e.message))
+            isShared ? setSharedField('draw_date', date) : void act.run(() => updateAndSave(c.id, (d) => void (d.panels[pi].draw_date = date)))
           }
           shared={isShared ? shared : null}
-          onRetry={async () => {
-            await api.post(`/subjects/${ds.subjectId}/imports/${batchId}/candidates/${c.id}/retry`)
-            await load()
-          }}
-          onRemove={async () => {
-            try {
+          onRetry={() =>
+            act.run(async () => {
+              await api.post(`/subjects/${ds.subjectId}/imports/${batchId}/candidates/${c.id}/retry`)
+              await load()
+            })
+          }
+          onRemove={() =>
+            act.run(async () => {
               const gone = await api.del<{ import_deleted: boolean }>(`/subjects/${ds.subjectId}/imports/${batchId}/candidates/${c.id}`)
               // Leaving out the last file leaves nothing to review.
               if (gone.import_deleted) navigate('/import')
               else await load()
-            } catch (e) {
-              setError((e as Error).message)
-            }
-          }}
+            })
+          }
           onMarkerCreated={() => void loadCatalog()}
         />
       ))}

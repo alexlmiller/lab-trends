@@ -10,7 +10,12 @@ export function priorResult(marker: MarkerSeries, draw: Panel) {
   )
 }
 
-export function resultChange(a?: Result, b?: Result): { value: string; unit?: string; note: string } {
+/**
+ * How a result differs from an earlier one. A difference is given only for two
+ * exact numbers in the same unit; `ratio` (0.1 for ten percent up) only when
+ * the earlier value is above zero.
+ */
+export function resultChange(a?: Result, b?: Result): { value: string; unit?: string; note: string; ratio?: number } {
   if (!a || !b) return { value: '—', note: 'Needs two results' }
   if (a.comparator === 'text' && b.comparator === 'text')
     return { value: a.raw_value === b.raw_value ? 'Same result' : 'Changed', note: '' }
@@ -26,5 +31,6 @@ export function resultChange(a?: Result, b?: Result): { value: string; unit?: st
     value: (delta < 0 ? '−' : delta > 0 ? '+' : '') + absolute,
     unit: b.raw_units ?? '',
     note: delta < 0 ? 'Lower' : delta > 0 ? 'Higher' : 'Unchanged',
+    ...(a.value_numeric > 0 ? { ratio: b.value_numeric / a.value_numeric - 1 } : {}),
   }
 }

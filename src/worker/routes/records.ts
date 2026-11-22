@@ -2,7 +2,7 @@
 // draws, results, targets, events, views and preferences.
 import { Hono } from 'hono'
 import { isValidDate } from '../../shared/dates'
-import { validatedPeriods } from '../../shared/events'
+import { EVENT_KINDS, validatedPeriods } from '../../shared/events'
 import { deriveResultFields } from '../../shared/semantics'
 import type { Dataset, EventKind, EventPeriod, MarkerSeries, PersonalTarget, Result, TimelineEvent } from '../../shared/types'
 import { loadCatalog } from '../catalog'
@@ -238,8 +238,6 @@ records.put('/subjects/:sid/targets/:mid', async (c) => {
   // The saved target comes back so the page can show it without fetching everything again.
   return c.json({ ok: true, target })
 })
-
-const EVENT_KINDS: EventKind[] = ['medication', 'procedure', 'illness', 'lifestyle', 'location', 'other']
 
 function eventBody(body: Record<string, unknown>, existing?: TimelineEvent) {
   const label = text(body.label, 'Label', 200) ?? existing?.label

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { categoryLabel, sortCategories } from '../../shared/categories'
-import { dayNumber, formatDate, todayDate } from '../../shared/dates'
+import { dayNumber, formatDate, MONTHS, todayDate } from '../../shared/dates'
 import type { MarkerSeries } from '../../shared/types'
 import { Sparkline } from '../charts/Sparkline'
 import { Icon } from '../components/Icon'
@@ -175,8 +175,6 @@ export function OverviewPage() {
     </div>
   )
 }
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function MarkerRow({
   marker,

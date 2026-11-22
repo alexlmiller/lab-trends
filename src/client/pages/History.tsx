@@ -171,10 +171,7 @@ function HistoryDetail({ markers }: { markers: MarkerSeries[] }) {
   const prev = readings.at(-2),
     last = readings.at(-1)
   const change = resultChange(prev, last)
-  const pct =
-    change.unit && prev?.value_numeric != null && prev.value_numeric > 0 && last?.value_numeric != null
-      ? formatPct(last.value_numeric / prev.value_numeric - 1)
-      : null
+  const pct = change.ratio != null ? formatPct(change.ratio) : null
   const outside = marker.results.filter(isOutOfRange).length
   const refs = [...new Set(marker.results.map((r) => r.reference_text).filter(Boolean))]
   const movers = useMemo(() => {
