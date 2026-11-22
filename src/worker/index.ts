@@ -7,7 +7,7 @@ import type { Dataset, EventKind, EventPeriod, ExtractionDocument, Marker, Marke
 import { instanceState, requireAccess, sameOriginWrites } from './auth'
 import { commitBatch } from './commit'
 import { extractTabular, extractWithModel, modelsFor, PROMPT_VERSION } from './extraction'
-import { HttpError, isTransient, logMessage, newId, nowIso, parseJson, sha256Hex, sourceKindFor, type AppEnv } from './lib'
+import { HttpError, isPlanRefusal, isTransient, logMessage, newId, nowIso, parseJson, PLAN_REFUSAL_MESSAGE, sha256Hex, sourceKindFor, type AppEnv } from './lib'
 import { annotateDocument } from './resolve'
 import { isMcpRequest, mcpFetch } from './mcp/server'
 
@@ -718,7 +718,7 @@ async function saveExtraction(env: Env, candidateId: string, sid: string, doc: E
 }
 
 async function failCandidate(db: D1Database, candidateId: string, err: unknown) {
-  const message = err instanceof Error ? err.message : String(err)
+  const message = isPlanRefusal(err) ? PLAN_REFUSAL_MESSAGE : err instanceof Error ? err.message : String(err)
   await db.prepare("UPDATE extraction_candidates SET status = 'failed', error = ?, updated_at = ? WHERE id = ?").bind(message.slice(0, 500), nowIso(), candidateId).run()
 }
 

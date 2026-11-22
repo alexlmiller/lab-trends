@@ -67,10 +67,21 @@ export function sourceKindFor(filename: string, mime: string | null): 'pdf' | 'i
   return null
 }
 
+/** Workers AI refuses some models on the Workers Free plan (its error 5035). Trying again cannot help. */
+export function isPlanRefusal(err: unknown): boolean {
+  return /\b5035\b|not available on the workers free plan/i.test(err instanceof Error ? err.message : String(err))
+}
+
+/** Shown on the import when the model is refused for the plan, in place of Cloudflare's raw error. */
+export const PLAN_REFUSAL_MESSAGE =
+  'Reading PDFs and photos needs the Workers Paid plan: the model this app uses is not offered on Workers Free. Upgrade under Workers plans in the Cloudflare dashboard, then choose Try again. Spreadsheets and typing results in work on the free plan.'
+
 /** Workers AI capacity/rate errors and upstream hiccups are worth retrying. */
 export function isTransient(err: unknown): boolean {
+  if (isPlanRefusal(err)) return false
   const m = (err instanceof Error ? err.message : String(err)).toLowerCase()
-  return /capacity|3040|429|rate limit|too many|timeout|timed out|temporar|overloaded|5\d\d|network/.test(m)
+  // \b keeps longer error codes such as 5035 from reading as an HTTP 503.
+  return /capacity|3040|429|rate limit|too many|timeout|timed out|temporar|overloaded|\b5\d\d\b|network/.test(m)
 }
 
 /** For logs. A JSON parser quotes the text it choked on, which here is report or request content. */
