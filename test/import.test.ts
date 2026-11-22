@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ExtractedPanel, ExtractionDocument } from '../src/shared/types'
 import { chunkPages, denseLength, mergePanels, splitText } from '../src/worker/chunking'
 import { finishDocument, readPages } from '../src/worker/extraction'
-import { isPlanRefusal, isTransient } from '../src/worker/lib'
+import { isAccountRefusal, isDailyLimit, isPlanRefusal, isTransient } from '../src/worker/lib'
 import { annotateDocument, nearDuplicate, type SavedByDate } from '../src/worker/resolve'
 
 const row = (raw_name: string, raw_value: string, marker_id?: string) => ({ raw_name, raw_value, ...(marker_id ? { marker_id } : {}) })
@@ -14,6 +14,29 @@ describe('model errors', () => {
   it('does not retry a model the plan does not offer', () => {
     expect(isPlanRefusal(refused)).toBe(true)
     expect(isTransient(refused)).toBe(false)
+  })
+
+  // What Workers AI returns once the day's free allowance is spent. It arrives as an HTTP 429, which would otherwise read as a rate limit.
+  const spent = new Error("3036: You have used up your daily free allocation of 10,000 neurons. Please upgrade to Cloudflare's Workers Paid plan if you would like to continue usage.")
+
+  it('does not retry once the free daily allowance is used up', () => {
+    expect(isDailyLimit(spent)).toBe(true)
+    expect(isTransient(spent)).toBe(false)
+  })
+
+  it('stops a long report when the allowance runs out part way, so half of it is not offered as the whole', async () => {
+    const pages = Array.from({ length: 4 }, (_, i) => `Page ${i + 1}\n` + `Glucose ${90 + i} mg/dL 70-99\n`.repeat(160))
+    let calls = 0
+    const env = {
+      AI: {
+        run: async () => {
+          if (++calls > 1) throw spent
+          return { response: { panels: [{ collected_at: '2025-03-04', results: [{ raw_name: 'Glucose', raw_value: '90' }] }] } }
+        },
+      },
+    } as unknown as Env
+    await expect(readPages(env, '@cf/google/gemma-4-26b-a4b-it', pages)).rejects.toThrow(/3036/)
+    expect(isAccountRefusal(spent)).toBe(true)
   })
 
   it('still retries capacity, rate and upstream errors', () => {
