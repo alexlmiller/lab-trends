@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ExtractedPanel, ExtractionDocument } from '../src/shared/types'
 import { chunkPages, denseLength, mergePanels, splitText } from '../src/worker/chunking'
 import { finishDocument, readPages } from '../src/worker/extraction'
-import { isPlanRefusal, isTransient } from '../src/worker/lib'
+import { isAccountRefusal, isDailyLimit, isPlanRefusal, isTransient } from '../src/worker/lib'
 import { annotateDocument, nearDuplicate, type SavedByDate } from '../src/worker/resolve'
 
 const row = (raw_name: string, raw_value: string, marker_id?: string) => ({ raw_name, raw_value, ...(marker_id ? { marker_id } : {}) })
@@ -14,6 +14,59 @@ describe('model errors', () => {
   it('does not retry a model the plan does not offer', () => {
     expect(isPlanRefusal(refused)).toBe(true)
     expect(isTransient(refused)).toBe(false)
+  })
+
+  // What Workers AI returns once the day's free allowance is spent. It arrives as an HTTP 429, which would otherwise read as a rate limit.
+  const spent = new Error("3036: You have used up your daily free allocation of 10,000 neurons. Please upgrade to Cloudflare's Workers Paid plan if you would like to continue usage.")
+
+  it('does not retry once the free daily allowance is used up', () => {
+    expect(isDailyLimit(spent)).toBe(true)
+    expect(isTransient(spent)).toBe(false)
+  })
+
+  it('stops a long report when the allowance runs out part way, so half of it is not offered as the whole', async () => {
+    const pages = Array.from({ length: 4 }, (_, i) => `Page ${i + 1}\n` + `Glucose ${90 + i} mg/dL 70-99\n`.repeat(160))
+    let calls = 0
+    const env = {
+      AI: {
+        run: async () => {
+          if (++calls > 1) throw spent
+          return { response: { panels: [{ collected_at: '2025-03-04', results: [{ raw_name: 'Glucose', raw_value: '90' }] }] } }
+        },
+      },
+    } as unknown as Env
+    await expect(readPages(env, '@cf/google/gemma-4-26b-a4b-it', pages)).rejects.toThrow(/3036/)
+    expect(isAccountRefusal(spent)).toBe(true)
+  })
+
+  describe('a report the model is too slow for', () => {
+    const pages = Array.from({ length: 6 }, (_, i) => `Page ${i + 1}\n` + `Glucose ${90 + i} mg/dL 70-99\n`.repeat(160))
+    const slow = (ms: number) =>
+      ({
+        AI: {
+          run: async () => {
+            await new Promise((resolve) => setTimeout(resolve, ms))
+            return { response: { panels: [{ collected_at: '2025-03-04', results: [{ raw_name: 'Glucose', raw_value: '90' }] }] } }
+          },
+        },
+      }) as unknown as Env
+
+    it('starts no new part once the time is up, keeps what was read and names the pages that were not', async () => {
+      // Four parts are read at once; by the time one finishes, the time for starting another has passed.
+      const read = await readPages(slow(40), 'model', pages, { startMs: 20, waitMs: 5_000 })
+      expect(read.panels).toHaveLength(4)
+      expect(read.warnings.join(' ')).toMatch(/took too long.*Not read: pages 5–6\./)
+    })
+
+    it('gives up on a part that never comes back, and fails the file when nothing was read', async () => {
+      await expect(readPages(slow(300), 'model', pages, { startMs: 5_000, waitMs: 30 })).rejects.toThrow(/took too long/)
+    })
+
+    it('reads every part of a report that is quick enough', async () => {
+      const read = await readPages(slow(1), 'model', pages)
+      expect(read.panels).toHaveLength(6)
+      expect(read.warnings).toEqual([])
+    })
   })
 
   it('still retries capacity, rate and upstream errors', () => {

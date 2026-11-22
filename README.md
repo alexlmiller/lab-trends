@@ -16,13 +16,15 @@ Lab Trends is a record-keeping tool. It is not a medical device and gives no med
 | Cloudflare Access | Sign-in. Nothing to set up beforehand: you switch it on in the deploy form, and Cloudflare creates the Zero Trust organization behind it. | Free |
 | A GitHub or GitLab account | The deploy button only. Cloudflare copies this repository into it and deploys from there. | Free |
 | Node.js 22.12 or newer, and git | Deploying from a terminal only. | |
-| The [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) | Importing PDFs and photos only. The model that reads them is [not offered on the free plan](https://developers.cloudflare.com/workers-ai/platform/pricing/). | $5 a month |
 
-Without Workers Paid you can still type results in and import spreadsheets; a 540-value spreadsheet imports on the free plan. A PDF or photo import stops with a message saying the plan does not offer the model.
+Everything runs inside Cloudflare's free allowances, including reading PDFs and photos. Nothing is billed on the free plans: an allowance that is used up stops that feature until it resets. Two of them shape what the app can do.
 
-Past the free allowances Cloudflare bills by use: [Workers, D1 and Queues](https://developers.cloudflare.com/workers/platform/pricing/), [R2](https://developers.cloudflare.com/r2/pricing/), [Workers AI](https://developers.cloudflare.com/workers-ai/platform/pricing/). Workers AI includes 10,000 Neurons a day on both plans and bills beyond that on Workers Paid.
+- **[Workers AI](https://developers.cloudflare.com/workers-ai/platform/pricing/) gives 10,000 Neurons a day.** Reading a report of 40 results uses about 100, and one of 90 results about 250. When the day's allowance is gone, a PDF or photo import stops with a message saying so, and works again after midnight UTC. Spreadsheets and results you type in use none.
+- **[Workers Free](https://developers.cloudflare.com/workers/platform/limits/#cpu-time) allows 10 ms of CPU per request,** and Cloudflare lets a Worker run over now and then. Imports do run over: in testing, turning a PDF into text took 50 ms for one page and 1.4 seconds for 99, and a 5,000-row spreadsheet 90 ms. On a free account these all imported: PDFs of 1 to 99 pages, a 2.4 MB photo, a 5,000-row spreadsheet. Cloudflare does not say how much running over it allows, so heavy use may be stopped. An import that fails with "Reading this file did not finish" is the sign.
 
-AI Gateway is not needed. Cloudflare also accepts prepaid [AI Gateway credits](https://developers.cloudflare.com/ai-gateway/features/unified-billing/) in place of Workers Paid for the default model (card only, 5% fee on credits); that route has not been tried with this app.
+The [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) ($5 a month) lifts both and bills by use past its own allowances: [Workers, D1 and Queues](https://developers.cloudflare.com/workers/platform/pricing/), [R2](https://developers.cloudflare.com/r2/pricing/), [Workers AI](https://developers.cloudflare.com/workers-ai/platform/pricing/).
+
+Reading takes about 15 seconds for a short report, a minute or two for one of 40 to 90 results, and 10 minutes for 99 pages. AI Gateway is not needed.
 
 ## Deploy your own
 
@@ -107,11 +109,11 @@ All optional. Set them as variables or secrets on the Worker (**Settings > Varia
 |---|---|
 | `OWNER_EMAIL` | The owner. Without it, the first person to sign in is the owner. Set it to change owner. |
 | `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` | Trust only this Access application (team domain such as `<team>.cloudflareaccess.com`, and the application's audience tag) instead of the one seen at first sign-in. Set both: with only one, the app refuses every sign-in. |
-| `EXTRACTION_MODEL` | Model that reads PDF text. Default `@cf/deepseek-ai/deepseek-v4.1-flash-1017`. |
+| `EXTRACTION_MODEL` | Model that reads PDF text. Default [`@cf/google/gemma-4-26b-a4b-it`](https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/). |
 | `VISION_MODEL` | Model that reads photos. Default: same as `EXTRACTION_MODEL`. |
 | `AI_GATEWAY_ID` | Route model calls through a named AI Gateway. Depending on that gateway's settings it logs or caches what passes through, which here is report text and photos. The Import page says when one is set. |
 
-The default model needs the Workers Paid plan ([Prerequisites](#prerequisites)). A model id that does not start with `@cf/` is not run by Cloudflare: report text and photos go to that provider, and the Import page says so.
+The default model is offered on the Workers Free plan. Some Workers AI models are not: with one of those set on a free account, a PDF or photo import stops with a message saying so. A model id that does not start with `@cf/` is not run by Cloudflare: report text and photos go to that provider, and the Import page says so.
 
 ## Privacy
 
@@ -184,10 +186,10 @@ Import pipeline: upload → raw file to R2 → `extraction_candidates` row (a pr
 - Values, ranges, flags and dates (`src/shared/semantics.ts`, `src/shared/dates.ts`) give a number, a band, a flag or a date only when the whole text is understood. Anything else is kept as text. `test/parsers.test.ts` is the table of what reports print and what it means; add to it before changing a parser.
 - CSV/XLSX: parsed in the Worker (`src/shared/tabular.ts`, `src/shared/xlsx.ts`). Supports row-per-result files and the pivoted history sheet (`Test | Reference Range | Units | <date>…`, one tab per panel; a `Cycle Day` row becomes draw tags). A sheet, column or row that is left out is named in a warning on the draft.
 - PDF: text rebuilt with layout from pdf.js positions (`unpdf`, `src/shared/pdfLayout.ts`), identifiers redacted, then `EXTRACTION_MODEL` with a JSON schema. Falls back to `env.AI.toMarkdown` if pdf.js fails. Scanned PDFs without text: upload a photo instead.
-- Long PDFs are read in chunks of whole pages (`src/worker/chunking.ts`, about 5,000 characters, 4 at a time, up to 40 chunks), because one reply holds about 200 results. Later chunks also get the top of page 1 for the collection date. A reply that runs out of tokens is split and re-read; a chunk that still fails becomes a warning naming its pages. Panels from all chunks merge by collection date.
+- Long PDFs are read in chunks of whole pages (`src/worker/chunking.ts`, about 5,000 characters, 4 at a time, up to 40 chunks), because one reply holds about 200 results. Later chunks also get the top of page 1 for the collection date. A reply that runs out of tokens is split and re-read; a chunk that still fails becomes a warning naming its pages. Panels from all chunks merge by collection date. A queue consumer is stopped after 15 minutes, so no chunk is started after 9 and none is waited for past 13: a report too long for the model's speed ends early, with a warning naming the pages not read.
 - Images: sent as they are to `VISION_MODEL`.
-- Models are called with reasoning off and a JSON schema, plus one repair retry on invalid JSON. Any `env.AI.run()` id works; a catalog id such as `anthropic/claude-sonnet-…` routes through AI Gateway Unified Billing (needs credits).
-- Transient Workers AI errors (capacity, rate limits, timeouts) re-queue the file with backoff, up to 3 attempts; then it shows as failed with a retry button. A file whose reading stopped without an answer is marked failed after 20 minutes (3 for a spreadsheet).
+- Models are called with reasoning off and a JSON schema, plus one repair retry on invalid JSON. Any `env.AI.run()` id works; a catalog id such as `anthropic/claude-sonnet-…` routes through AI Gateway Unified Billing (needs credits). A model that thinks unless told not to needs its own switch in `runModel` (`src/worker/extraction.ts`).
+- Transient Workers AI errors (capacity, rate limits, timeouts) re-queue the file with backoff, up to 3 attempts; then it shows as failed with a retry button. Two errors are not retried and stop the whole file, since every part would fail the same way: the model is not offered on the plan (5035), and the day's free allowance is used up (3036, which arrives as an HTTP 429). A file whose reading stopped without an answer is marked failed after 20 minutes (3 for a spreadsheet).
 - Review (`annotateDocument` in `src/worker/resolve.ts`) unticks rows already saved for that date, including a different saved value (likelier a misread than a correction). Ticking a differing row replaces the saved value on commit and keeps the old one in `result_revisions` until the result is deleted. A panel whose numbers match a saved draw within 5 days gets a "same draw?" hint that moves it to that date.
 - Commit (`src/worker/commit.ts`) claims the import first, so it is saved once however often it is asked. It merges into an existing draw on the same date and skips values already saved. One date holds one value per test: a second, different value in the same import is not saved. The reply to the commit lists it once; the import's record keeps only the count.
 - Every upload that put a result on a draw is linked to it (`panel_files`) and deleted with the last draw that uses it.

@@ -136,11 +136,25 @@ export function isPlanRefusal(err: unknown): boolean {
 
 /** Shown on the import when the model is refused for the plan, in place of Cloudflare's raw error. */
 export const PLAN_REFUSAL_MESSAGE =
-  'Reading PDFs and photos needs the Workers Paid plan: the model this app uses is not offered on Workers Free. Upgrade under Workers plans in the Cloudflare dashboard, then choose Try again. Spreadsheets and typing results in work on the free plan.'
+  'The model set for this app (EXTRACTION_MODEL or VISION_MODEL) is not offered on the Workers Free plan. Remove that setting on the Worker to use the default model, which is, or upgrade under Workers plans in the Cloudflare dashboard. Then choose Try again.'
+
+/** The account has used its free Workers AI allowance for the day (error 3036, sent as an HTTP 429). It resets at 00:00 UTC. */
+export function isDailyLimit(err: unknown): boolean {
+  return /\b3036\b|daily free allocation/i.test(err instanceof Error ? err.message : String(err))
+}
+
+/** Shown on the import when the daily allowance is used up, in place of Cloudflare's raw error. */
+export const DAILY_LIMIT_MESSAGE =
+  "Today's free Workers AI allowance on this Cloudflare account is used up, so this file was not read. The allowance resets at midnight UTC: choose Try again after that. The Workers Paid plan removes the daily limit."
+
+/** The account cannot run the model at all right now. Every part of a file would fail the same way, and trying again soon cannot help. */
+export function isAccountRefusal(err: unknown): boolean {
+  return isPlanRefusal(err) || isDailyLimit(err)
+}
 
 /** Workers AI capacity/rate errors and upstream hiccups are worth retrying. */
 export function isTransient(err: unknown): boolean {
-  if (isPlanRefusal(err)) return false
+  if (isAccountRefusal(err)) return false
   const m = (err instanceof Error ? err.message : String(err)).toLowerCase()
   // \b keeps longer error codes such as 5035 from reading as an HTTP 503.
   return /capacity|3040|429|rate limit|too many|timeout|timed out|temporar|overloaded|\b5\d\d\b|network/.test(m)
