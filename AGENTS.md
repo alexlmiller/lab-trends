@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Read `README.md` for architecture, commands and deploy. Rules that are not obvious from the code:
+Deploy and updating: `README.md`. Architecture: `docs/how-it-works.md`. Commands: `CONTRIBUTING.md`. Settings and sign-in fixes: `docs/operating.md`. Rules that are not obvious from the code:
 
 - This repository is public and deployed by other people into their own Cloudflare accounts. Nothing account-specific goes in it: no account or resource IDs, domains, Access values or email addresses, in code, config, docs, tests or commit messages. `npm run check:neutral` enforces it. Settings a deployment needs are Worker variables or secrets (`Settings` in `src/worker/lib.ts`), never `wrangler.jsonc` `vars`.
 - Do not add a `.dev.vars.example` or `.env.example`: the Deploy to Cloudflare button asks every deployer for each value in it.
@@ -16,6 +16,7 @@ Read `README.md` for architecture, commands and deploy. Rules that are not obvio
 - Migrations are additive and applied before the new code deploys (`npm run deploy`, `scripts/deploy.mjs`), so the previous Worker version must keep working against the new schema. Only a first deploy, which has no database yet, deploys before migrating. Every deploy path (button, imported copy, terminal) runs `npm run deploy`; keep it the one command.
 - Correlations are leads, not findings: keep n, the 95% interval and the change-on-change correlation visible wherever an r is shown.
 - URLs carry view state (`?m=`, `?range=`, `?scale=`, `?a=&b=`). Use `useParam`/`useListParam` (push history) rather than component state for anything shareable.
+- Docs: the README is for people deploying their own copy (what it does, prerequisites, deploy, sign-in, updating). Technical detail goes in `docs/`. Screenshots in `docs/images` use only the fictional seed (`scripts/fixtures/demo.sql`), never a real database; `CONTRIBUTING.md` lists the URLs.
 - MCP tools go through the `/api` routes (`apiClient` in `src/worker/mcp/tools.ts`), never straight to D1, so validation and revisions stay in one place. Mark tools that change or remove data `destructiveHint: true`. Tool output is health data: never log it. Who has access is not manageable over MCP.
 
 - UI: compose `src/client/components/ui.tsx` (`PageHeader`, `SectionHeader`, `Button`/`ButtonLink`/`ButtonAnchor`, `StatGrid`/`Stat`, `Disclosure`, `CopyRow`, `linkClass`) and `SelectField`/`SearchField` (every dropdown; search appears above five options) with Tailwind classes. Don't add page-specific CSS classes to `styles.css`. Show range status only for out-of-range values.

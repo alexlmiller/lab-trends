@@ -2,7 +2,7 @@
 --
 -- instance: the Cloudflare Access application this deployment trusts and its owner,
 -- recorded at the first sign-in. One row. Deleting it lets the next sign-in claim the
--- deployment again (README: "Sign-in problems").
+-- deployment again (docs/operating.md: "Sign-in problems").
 CREATE TABLE instance (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   access_team_domain TEXT NOT NULL,                -- <team>.cloudflareaccess.com

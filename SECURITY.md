@@ -15,8 +15,8 @@ Include what you did, what happened, and the commit you tested. Never include re
 - Result values, report text or uploaded files reaching logs, another site, or anyone but the deployment's own users.
 - Script injection through uploaded files, extracted text, or imported values.
 
-Known and accepted: a deployment that nobody has signed in to yet can be claimed by whoever signs in first (README, "Sign-in problems", explains the reset). It holds no data at that point.
+Known and accepted: a deployment that nobody has signed in to yet can be claimed by whoever signs in first ([docs/operating.md](docs/operating.md#sign-in-problems) explains the reset). It holds no data at that point.
 
 ## Your own deployment
 
-Its security rests on your Cloudflare account. Turn on two-factor authentication there, keep the Worker behind Access, and keep the copy you deployed up to date (README, "Updating").
+Its security rests on your Cloudflare account. Turn on two-factor authentication there, keep the Worker behind Access, and keep the copy you deployed up to date ([README, Updating](README.md#updating)).

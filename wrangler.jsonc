@@ -13,7 +13,7 @@
   "preview_urls": false,
 
   // Optional settings (extraction models, an explicit Access application, the owner) are
-  // Worker variables or secrets set in Cloudflare, and survive deploys (README: "Settings").
+  // Worker variables or secrets set in Cloudflare, and survive deploys (docs/operating.md: "Settings").
   "keep_vars": true,
 
   "assets": {
