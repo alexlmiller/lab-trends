@@ -39,6 +39,36 @@ describe('model errors', () => {
     expect(isAccountRefusal(spent)).toBe(true)
   })
 
+  describe('a report the model is too slow for', () => {
+    const pages = Array.from({ length: 6 }, (_, i) => `Page ${i + 1}\n` + `Glucose ${90 + i} mg/dL 70-99\n`.repeat(160))
+    const slow = (ms: number) =>
+      ({
+        AI: {
+          run: async () => {
+            await new Promise((resolve) => setTimeout(resolve, ms))
+            return { response: { panels: [{ collected_at: '2025-03-04', results: [{ raw_name: 'Glucose', raw_value: '90' }] }] } }
+          },
+        },
+      }) as unknown as Env
+
+    it('starts no new part once the time is up, keeps what was read and names the pages that were not', async () => {
+      // Four parts are read at once; by the time one finishes, the time for starting another has passed.
+      const read = await readPages(slow(40), 'model', pages, { startMs: 20, waitMs: 5_000 })
+      expect(read.panels).toHaveLength(4)
+      expect(read.warnings.join(' ')).toMatch(/took too long.*Not read: pages 5–6\./)
+    })
+
+    it('gives up on a part that never comes back, and fails the file when nothing was read', async () => {
+      await expect(readPages(slow(300), 'model', pages, { startMs: 5_000, waitMs: 30 })).rejects.toThrow(/took too long/)
+    })
+
+    it('reads every part of a report that is quick enough', async () => {
+      const read = await readPages(slow(1), 'model', pages)
+      expect(read.panels).toHaveLength(6)
+      expect(read.warnings).toEqual([])
+    })
+  })
+
   it('still retries capacity, rate and upstream errors', () => {
     for (const message of ['3040: Capacity temporarily exceeded', '429 Too Many Requests', 'InferenceUpstreamError: 503', 'Network connection lost', 'The operation timed out']) {
       expect(isTransient(new Error(message))).toBe(true)
