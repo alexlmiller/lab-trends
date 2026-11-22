@@ -71,7 +71,9 @@ async function writeBatch(db: D1Database, subjectId: string, batchId: string, em
   ])
 
   const statements: D1PreparedStatement[] = []
-  const summary: CommitSummary = { panels_created: 0, panels_merged: 0, results_created: 0, results_replaced: 0, duplicates_skipped: 0, markers_created: 0, skipped: 0, same_day_conflicts: [] }
+  const summary: CommitSummary = { panels_created: 0, panels_merged: 0, results_created: 0, results_replaced: 0, duplicates_skipped: 0, markers_created: 0, skipped: 0 }
+  const conflicts: NonNullable<CommitSummary['same_day_conflicts']> = []
+  let conflictCount = 0
 
   // Existing slugs (to keep new custom slugs unique) and markers by id.
   const idBySlug = new Map((markerRows.results as { id: string; slug: string }[]).map((m) => [m.slug, m.id]))
@@ -188,8 +190,9 @@ async function writeBatch(db: D1Database, subjectId: string, batchId: string, em
         const first = written.get(key)
         if (first !== undefined) {
           if (sameReportedValue(first, row.raw_value)) summary.duplicates_skipped++
-          else if (summary.same_day_conflicts!.length < MAX_REPORTED_CONFLICTS) {
-            summary.same_day_conflicts!.push({ date: panel.draw_date, name: row.raw_name.trim(), kept: first, dropped: row.raw_value.trim() })
+          else {
+            conflictCount++
+            if (conflicts.length < MAX_REPORTED_CONFLICTS) conflicts.push({ date: panel.draw_date, name: row.raw_name.trim(), kept: first, dropped: row.raw_value.trim() })
           }
           continue
         }
@@ -262,7 +265,8 @@ async function writeBatch(db: D1Database, subjectId: string, batchId: string, em
   if (stillHidden.length !== hidden.length) {
     statements.push(db.prepare('UPDATE preferences SET hidden_marker_ids = ?, updated_at = ? WHERE subject_id = ?').bind(JSON.stringify(stillHidden), now, subjectId))
   }
-  if (!summary.same_day_conflicts!.length) delete summary.same_day_conflicts
+  if (conflictCount) summary.same_day_conflict_count = conflictCount
+  // The stored record holds counts only. The values that were not saved go back in the reply and nowhere else.
   statements.push(
     db
       .prepare("UPDATE import_batches SET status = 'committed', committed_at = ?, committed_by = ?, summary = ? WHERE id = ? AND status = 'committing'")
@@ -272,5 +276,5 @@ async function writeBatch(db: D1Database, subjectId: string, batchId: string, em
 
   const linked = new Set([...linkedFiles].map((pair) => pair.split('|')[1]))
   const unusedFileIds = candidates.map((c) => c.file_id).filter((id): id is string => Boolean(id) && !linked.has(id!))
-  return { summary, unusedFileIds }
+  return { summary: conflicts.length ? { ...summary, same_day_conflicts: conflicts } : summary, unusedFileIds }
 }

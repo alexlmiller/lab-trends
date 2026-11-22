@@ -81,7 +81,9 @@ export type CommitSummary = {
   duplicates_skipped: number
   markers_created: number
   skipped: number
-  /** Two different values for one test on one date in the same import: the first was saved, the other was not. */
+  /** How many values were not saved because the import gave the same test another value on the same date. The first was saved. */
+  same_day_conflict_count?: number
+  /** Which ones. Only in the reply to the commit, never stored: an import's record holds counts, not results. */
   same_day_conflicts?: { date: string; name: string; kept: string; dropped: string }[]
 }
 

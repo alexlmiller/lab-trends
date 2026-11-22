@@ -87,8 +87,12 @@ describe('importing and saving', () => {
 
   it('never overwrites one value with another from the same import without saying so', async () => {
     const summary = await s.save('ogtt.csv', 'Test,Value,Date\nGlucose,90,2025-03-04\nGlucose,160,2025-03-04\nGlucose,90.0,2025-03-04\n')
-    expect(summary).toMatchObject({ results_created: 1, duplicates_skipped: 1, same_day_conflicts: [{ date: '2025-03-04', name: 'Glucose', kept: '90', dropped: '160' }] })
+    expect(summary).toMatchObject({ results_created: 1, duplicates_skipped: 1, same_day_conflict_count: 1, same_day_conflicts: [{ date: '2025-03-04', name: 'Glucose', kept: '90', dropped: '160' }] })
     expect(s.DB.query('SELECT raw_value FROM lab_results').map((r) => r.raw_value)).toEqual(['90'])
+    // The value that was not saved is in the reply only: the import's record keeps the count.
+    const stored = String(s.DB.query('SELECT summary FROM import_batches')[0].summary)
+    expect(JSON.parse(stored)).toMatchObject({ same_day_conflict_count: 1 })
+    expect(stored).not.toContain('160')
   })
 
   it('tells the reviewer about a repeated test before it is saved', async () => {

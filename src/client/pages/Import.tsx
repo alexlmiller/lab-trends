@@ -332,17 +332,24 @@ export function ImportReviewPage() {
             </ul>
           </Card>
         ) : null}
-        {s?.same_day_conflicts?.length ? (
+        {s?.same_day_conflict_count ? (
           <Alert tone="warn">
-            <div className="font-medium">{plural(s.same_day_conflicts.length, 'result')} not saved: the import had two different values for the same test on the same date.</div>
-            <p className="m-0 mt-1">One value per test per date is kept. The first was saved; check these against the report and correct the saved result if the other value is the right one.</p>
-            <ul className="m-0 mt-1.5 grid gap-0.5 pl-5">
-              {s.same_day_conflicts.map((x, i) => (
-                <li key={i}>
-                  {x.name}, {formatDate(x.date)}: saved <b>{x.kept}</b>, not saved <b>{x.dropped}</b>
-                </li>
-              ))}
-            </ul>
+            <div className="font-medium">{plural(s.same_day_conflict_count, 'result')} not saved: the import had two different values for the same test on the same date.</div>
+            <p className="m-0 mt-1">One value per test per date is kept, and the first was saved. Check the report and correct the saved result if the other value is the right one.</p>
+            {s.same_day_conflicts ? (
+              <>
+                <ul className="m-0 mt-1.5 grid gap-0.5 pl-5">
+                  {s.same_day_conflicts.map((x, i) => (
+                    <li key={i}>
+                      {x.name}, {formatDate(x.date)}: saved <b>{x.kept}</b>, not saved <b>{x.dropped}</b>
+                    </li>
+                  ))}
+                </ul>
+                <p className="m-0 mt-1.5 text-[12.5px]">This list is shown once. The values that were not saved are not kept anywhere.</p>
+              </>
+            ) : (
+              <p className="m-0 mt-1">Which ones was shown when the import was saved. To find them again, open the source file from the draw.</p>
+            )}
           </Alert>
         ) : null}
         <div className="flex gap-2">
