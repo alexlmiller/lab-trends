@@ -13,7 +13,7 @@ Read `README.md` for architecture, commands and deploy. Rules that are not obvio
 - Preserve values exactly as reported (`raw_value`, `raw_units`, `reference_text`). Numbers, ref bounds and inferred flags are derived by `deriveResultFields` in `src/shared/semantics.ts`; reported flags win over inferred ones. Never infer flags from catalog default ranges.
 - Units are never converted. `src/shared/units.ts` only decides notation equivalence for the mixed-units warning.
 - Dates: `draw_date` is a calendar date string. Do day math with `dayNumber()` (`src/shared/dates.ts`), not `new Date(date)` in local time.
-- Migrations are additive and applied before the new code deploys (`npm run deploy`), so the previous Worker version must keep working against the new schema.
+- Migrations are additive and applied before the new code deploys (`npm run deploy`, `scripts/deploy.mjs`), so the previous Worker version must keep working against the new schema. Only a first deploy, which has no database yet, deploys before migrating. Every deploy path (button, imported copy, terminal) runs `npm run deploy`; keep it the one command.
 - Correlations are leads, not findings: keep n, the 95% interval and the change-on-change correlation visible wherever an r is shown.
 - URLs carry view state (`?m=`, `?range=`, `?scale=`, `?a=&b=`). Use `useParam`/`useListParam` (push history) rather than component state for anything shareable.
 - MCP tools go through the `/api` routes (`apiClient` in `src/worker/mcp/tools.ts`), never straight to D1, so validation and revisions stay in one place. Mark tools that change or remove data `destructiveHint: true`. Tool output is health data: never log it. Who has access is not manageable over MCP.
