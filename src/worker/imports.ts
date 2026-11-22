@@ -2,7 +2,7 @@
 // saving the draft, failing it clearly, and giving up on one that never finishes.
 import type { ExtractedPanel, ExtractedResult, ExtractionDocument, SourceKind } from '../shared/types'
 import { extractTabular, extractWithModel, PROMPT_VERSION } from './extraction'
-import { HttpError, isPlanRefusal, isTransient, logMessage, nowIso, PLAN_REFUSAL_MESSAGE } from './lib'
+import { DAILY_LIMIT_MESSAGE, HttpError, isDailyLimit, isPlanRefusal, isTransient, logMessage, nowIso, PLAN_REFUSAL_MESSAGE } from './lib'
 import { annotateDocument } from './resolve'
 
 /** A model read is tried this many times before the file is marked failed. */
@@ -24,7 +24,7 @@ export async function saveExtraction(env: Env, candidateId: string, sid: string,
 
 export async function failCandidate(db: D1Database, candidateId: string, err: unknown) {
   // Our own messages are written for people. Anything else may quote the report, so it is reduced first.
-  const message = isPlanRefusal(err) ? PLAN_REFUSAL_MESSAGE : err instanceof HttpError ? err.message : logMessage(err)
+  const message = isPlanRefusal(err) ? PLAN_REFUSAL_MESSAGE : isDailyLimit(err) ? DAILY_LIMIT_MESSAGE : err instanceof HttpError ? err.message : logMessage(err)
   await db.prepare("UPDATE extraction_candidates SET status = 'failed', error = ?, updated_at = ? WHERE id = ?").bind(message.slice(0, 500), nowIso(), candidateId).run()
 }
 

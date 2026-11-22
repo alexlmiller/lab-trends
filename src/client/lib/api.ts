@@ -23,6 +23,9 @@ function reloadOnce() {
   window.location.reload()
 }
 
+/** Fired when a change is refused because this is the read-only demo. */
+export const DEMO_READ_ONLY_EVENT = 'lab-trends:demo-read-only'
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const init: RequestInit = { method, headers: {}, credentials: 'same-origin' }
   if (body instanceof FormData) init.body = body
@@ -41,6 +44,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   // An expired Access session is answered by Access, not the app, so it carries no code.
   if ((res.status === 401 || res.status === 403) && method === 'GET' && (!data?.code || data.code === 'unauthenticated')) reloadOnce()
   if (!res.ok) {
+    // The demo banner says why, wherever the change was attempted.
+    if (data?.code === 'demo_read_only') window.dispatchEvent(new Event(DEMO_READ_ONLY_EVENT))
     throw new ApiError(res.status, data?.error || `Request failed (${res.status})`, data?.code, { team: data?.team as string | undefined, email: data?.email as string | undefined })
   }
   return data as T

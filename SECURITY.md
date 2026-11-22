@@ -14,9 +14,10 @@ Include what you did, what happened, and the commit you tested. Never include re
 - Taking over a deployment that has already been claimed.
 - Result values, report text or uploaded files reaching logs, another site, or anyone but the deployment's own users.
 - Script injection through uploaded files, extracted text, or imported values.
+- On a deployment with `DEMO_MODE=read-only`: changing anything, or reading records of anyone other than the demo people.
 
-Known and accepted: a deployment that nobody has signed in to yet can be claimed by whoever signs in first (README, "Sign-in problems", explains the reset). It holds no data at that point.
+Known and accepted: a deployment that nobody has signed in to yet can be claimed by whoever signs in first ([docs/operating.md](docs/operating.md#sign-in-problems) explains the reset). It holds no data at that point.
 
 ## Your own deployment
 
-Its security rests on your Cloudflare account. Turn on two-factor authentication there, keep the Worker behind Access, and keep the copy you deployed up to date (README, "Updating").
+Its security rests on your Cloudflare account. Turn on two-factor authentication there, keep the Worker behind Access, and keep the copy you deployed up to date ([Updating](docs/deploying.md#updating)).

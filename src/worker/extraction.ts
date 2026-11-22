@@ -10,7 +10,7 @@ import { parseCsv, sheetsToDocument } from '../shared/tabular'
 import type { ExtractedPanel, ExtractionDocument, SourceKind } from '../shared/types'
 import { readXlsx } from '../shared/xlsx'
 import { chunkPages, denseLength, mapLimit, mergePanels, splitText, type Chunk } from './chunking'
-import { isTransient, logMessage, settings } from './lib'
+import { isAccountRefusal, isTransient, logMessage, settings } from './lib'
 import { redact } from './redact'
 
 export const PROMPT_VERSION = 'lab_extraction.v2'
@@ -90,8 +90,15 @@ const RULES = [
 
 /** Chunks read at once; more only trips Workers AI rate limits. */
 const PARALLEL_CHUNKS = 4
-/** About 100 pages: what fits in the queue consumer's 15-minute run. */
+/** About 100 pages. Each part is a model call, so this also caps what one file can cost. */
 const MAX_CHUNKS = 40
+/**
+ * A queue consumer is stopped after 15 minutes, and a read that is stopped starts again
+ * from nothing. So no new part of a report is started after `startMs`, and a part still
+ * being read at `waitMs` is given up. A slow model then ends a long report early, with a
+ * warning naming the pages, and what it did read is kept.
+ */
+const READ_BUDGET = { startMs: 9 * 60_000, waitMs: 13 * 60_000 }
 /** A chunk whose reply is cut off is split again, at most this many times. */
 const MAX_SPLITS = 3
 
@@ -129,7 +136,7 @@ export async function extractWithModel(env: Env, kind: Extract<SourceKind, 'pdf'
 }
 
 /** Read page texts in chunks, a few at a time; a chunk that fails outright becomes a warning. */
-export async function readPages(env: Env, model: string, pages: string[]): Promise<Read> {
+export async function readPages(env: Env, model: string, pages: string[], budget = READ_BUDGET): Promise<Read> {
   const all = chunkPages(pages)
   const chunks = all.slice(0, MAX_CHUNKS)
   const warnings: string[] = []
@@ -139,19 +146,55 @@ export async function readPages(env: Env, model: string, pages: string[]): Promi
   // Later chunks see the top of page 1 for the collection date and facility, which many reports print only once.
   const header = chunks.length > 1 ? headerOf(pages.find((p) => p.trim()) ?? '') : ''
   const failures: unknown[] = []
-  const reads = await mapLimit(chunks, PARALLEL_CHUNKS, async (chunk, i) => {
+  const unread: Chunk[] = []
+  const began = Date.now()
+  const reads = await mapLimit(chunks, PARALLEL_CHUNKS, async (chunk, i): Promise<Read> => {
+    if (i > 0 && Date.now() - began > budget.startMs) {
+      unread.push(chunk)
+      return { panels: [], warnings: [] }
+    }
     try {
-      return await readText(env, model, chunk, pages.length, { header: i > 0 ? header : '', partial: chunks.length > 1 }, 0)
+      const read = await within(readText(env, model, chunk, pages.length, { header: i > 0 ? header : '', partial: chunks.length > 1 }, 0), began + budget.waitMs - Date.now())
+      if (read) return read
+      unread.push(chunk)
+      return { panels: [], warnings: [] }
     } catch (err) {
-      // Retry the whole file for capacity errors; otherwise keep what the other chunks found.
-      if (chunks.length === 1 || isTransient(err)) throw err
+      // Retry the whole file for capacity errors, and stop it when the account cannot run the model at all:
+      // half a report read before the day's allowance ran out must not pass for the whole report.
+      // Otherwise keep what the other chunks found.
+      if (chunks.length === 1 || isTransient(err) || isAccountRefusal(err)) throw err
       console.error('extraction chunk failed', chunk.pages.join('-'), logMessage(err))
       failures.push(err)
       return { panels: [], warnings: [`${pageLabel(chunk.pages)} could not be read, so results there are missing. Check them against the report.`] }
     }
   })
   if (failures.length === chunks.length) throw failures[0]
+  if (unread.length + failures.length === chunks.length) throw new Error('The model took too long to read this file. Choose Try again, or upload fewer pages at a time.')
+  if (unread.length) {
+    warnings.push(`This PDF took too long to read in one go. Not read: ${pageRanges(unread)}. Upload them as a separate PDF.`)
+  }
   return { panels: reads.flatMap((r) => r.panels), warnings: [...warnings, ...reads.flatMap((r) => r.warnings)] }
+}
+
+/** The promise's value, or null when it takes longer than `ms`. */
+function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), Math.max(0, ms))
+  })
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer))
+}
+
+/** "pages 61–99", or "pages 13–18, 40–99" when the parts are not next to each other. */
+function pageRanges(chunks: Chunk[]): string {
+  const ranges: [number, number][] = []
+  for (const [from, to] of chunks.map((c) => c.pages).sort((a, b) => a[0] - b[0])) {
+    const last = ranges.at(-1)
+    if (last && from <= last[1] + 1) last[1] = Math.max(last[1], to)
+    else ranges.push([from, to])
+  }
+  const only = ranges.length === 1 && ranges[0][0] === ranges[0][1]
+  return `${only ? 'page' : 'pages'} ${ranges.map(([a, b]) => (a === b ? `${a}` : `${a}–${b}`)).join(', ')}`
 }
 
 async function readText(env: Env, model: string, chunk: Chunk, totalPages: number, context: { header: string; partial: boolean }, depth: number): Promise<Read> {
@@ -208,7 +251,8 @@ const fence = (text: string) => '```\n' + text + '\n```'
 const headerOf = (text: string) => text.split('\n').slice(0, 40).join('\n').slice(0, 2_000)
 const pageLabel = ([a, b]: [number, number]) => (a === b ? `Page ${a}` : `Pages ${a}–${b}`)
 
-export const DEFAULT_MODEL = '@cf/deepseek-ai/deepseek-v4.1-flash-1017'
+/** Offered on the Workers Free plan, and reads photos as well as text. */
+export const DEFAULT_MODEL = '@cf/google/gemma-4-26b-a4b-it'
 
 /** The model that reads each kind of upload: the EXTRACTION_MODEL / VISION_MODEL settings, or the default. */
 export function modelsFor(env: Env): { pdf: string; photo: string } {
@@ -241,7 +285,11 @@ async function runModel(env: Env, model: string, messages: Messages): Promise<un
     response_format: { type: 'json_schema', json_schema: { name: 'lab_extraction', schema: EXTRACTION_SCHEMA } },
     temperature: 0,
   }
-  if (model.includes('deepseek')) {
+  if (model.includes('gemma-4')) {
+    // Thinking is on unless asked off, and would spend the reply's tokens before the JSON starts.
+    input.chat_template_kwargs = { enable_thinking: false }
+    input.max_completion_tokens = 16_384
+  } else if (model.includes('deepseek')) {
     input.reasoning_effort = 'none'
     input.max_completion_tokens = 16_384
   } else {
@@ -361,7 +409,14 @@ function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.map((x) => String(x)).filter(Boolean) : []
 }
 
-function toBase64(bytes: ArrayBuffer): string {
+/**
+ * Base64 by the runtime's own encoder where there is one. Building the string in
+ * JavaScript costs about 25 ms of CPU per megabyte, and the Workers Free plan
+ * allows 10 ms for a whole invocation.
+ */
+export function toBase64(bytes: ArrayBuffer): string {
+  const native = (globalThis as { Buffer?: { from(data: ArrayBuffer): { toString(encoding: 'base64'): string } } }).Buffer
+  if (native) return native.from(bytes).toString('base64')
   const arr = new Uint8Array(bytes)
   let binary = ''
   for (let i = 0; i < arr.length; i += 0x8000) binary += String.fromCharCode(...arr.subarray(i, i + 0x8000))

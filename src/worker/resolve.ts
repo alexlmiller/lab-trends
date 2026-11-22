@@ -158,7 +158,7 @@ function markSameDayRepeats(doc: ExtractionDocument) {
 /** Saved results by draw date: one draw's id and its values by marker. */
 export type SavedByDate = Map<string, { panel_id: string; values: Map<string, string> }>
 
-const REMOVED_NOTE = 'You removed this marker, so it is left out. Tick to bring it back.'
+const REMOVED_NOTE = 'You removed this test, so it is left out. Tick to bring it back.'
 /** How far apart two dates can be and still be the same draw (collection vs result date). */
 const NEAR_DAYS = 5
 

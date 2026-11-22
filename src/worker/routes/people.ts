@@ -1,6 +1,6 @@
 // Who is signed in, who may sign in, and the people whose records are kept.
 import { Hono, type MiddlewareHandler } from 'hono'
-import { forgetTrust, instanceState } from '../auth'
+import { forgetTrust, instanceState, isDemo } from '../auth'
 import { modelsFor } from '../extraction'
 import { HttpError, jsonBody, newId, nowIso, settings, text, type AppEnv } from '../lib'
 import { deleteSubject } from '../storage'
@@ -36,6 +36,7 @@ export async function loadMe(env: Env, who: { email: string; owner: boolean }) {
     document_imports: Boolean(env.EXTRACTIONS),
     extraction_models: modelsFor(env),
     ai_gateway: Boolean(settings(env).AI_GATEWAY_ID),
+    demo: isDemo(env),
   }
 }
 

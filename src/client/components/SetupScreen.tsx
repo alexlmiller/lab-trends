@@ -7,7 +7,7 @@ const ACCESS_GUIDE = 'https://developers.cloudflare.com/workers/configuration/cl
 const WORKERS_DASHBOARD = 'https://dash.cloudflare.com/?to=/:account/workers-and-pages'
 const D1_DASHBOARD = 'https://dash.cloudflare.com/?to=/:account/workers/d1'
 
-/** Shown instead of the app while the Worker refuses to serve it (src/worker/auth.ts). Keep the steps in step with README "Turn on sign-in". */
+/** Shown instead of the app while the Worker refuses to serve it (src/worker/auth.ts). Keep the steps in step with docs/deploying.md "Turn on sign-in". */
 export function SetupScreen({ gate }: { gate: Gate }) {
   return (
     <div className="mx-auto grid min-h-dvh max-w-xl content-start gap-5 px-4 py-10 sm:py-16">
@@ -27,6 +27,8 @@ export function SetupScreen({ gate }: { gate: Gate }) {
         <NotReady />
       ) : gate.code === 'misconfigured' ? (
         <Misconfigured />
+      ) : gate.code === 'demo_unsafe' ? (
+        <DemoUnsafe />
       ) : (
         <Unverified />
       )}
@@ -159,6 +161,23 @@ function NotReady() {
       <div>
         <Reload />
       </div>
+    </Screen>
+  )
+}
+
+function DemoUnsafe() {
+  return (
+    <Screen
+      title="Demo mode is on"
+      lead={
+        <>
+          This app has <code>DEMO_MODE</code> set, which shows everything to anyone without signing in. This database holds people other than the sample ones, so the app refuses to show anything.
+        </>
+      }
+    >
+      <Card className="text-[13.5px]">
+        In the Cloudflare dashboard, open <b>Workers &amp; Pages</b>, select this app’s Worker, then <b>Settings</b> and <b>Variables and Secrets</b>, and delete <code>DEMO_MODE</code>. Sign-in then works as before.
+      </Card>
     </Screen>
   )
 }
