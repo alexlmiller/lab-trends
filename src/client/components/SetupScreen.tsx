@@ -7,7 +7,7 @@ const ACCESS_GUIDE = 'https://developers.cloudflare.com/workers/configuration/cl
 const WORKERS_DASHBOARD = 'https://dash.cloudflare.com/?to=/:account/workers-and-pages'
 const D1_DASHBOARD = 'https://dash.cloudflare.com/?to=/:account/workers/d1'
 
-/** Shown instead of the app while the Worker refuses to serve it (src/worker/auth.ts). Keep the steps in step with README "Turn on sign-in". */
+/** Shown instead of the app while the Worker refuses to serve it (src/worker/auth.ts). Keep the steps in step with docs/deploying.md "Turn on sign-in". */
 export function SetupScreen({ gate }: { gate: Gate }) {
   return (
     <div className="mx-auto grid min-h-dvh max-w-xl content-start gap-5 px-4 py-10 sm:py-16">
