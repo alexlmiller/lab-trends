@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { Icon, type IconName } from '../components/Icon'
-import { Alert, Button, cx, Eyebrow, Field, inputClass, PageHeader, Spinner } from '../components/ui'
+import { Alert, Button, cx, Eyebrow, Field, inputClass, linkClass, PageHeader, Spinner } from '../components/ui'
 import { SelectField } from '../components/SelectField'
 import { SetupScreen } from '../components/SetupScreen'
-import { api } from '../lib/api'
+import { api, DEMO_READ_ONLY_EVENT } from '../lib/api'
 import { DataProvider, useData } from '../lib/data'
 
 type Destination = { to: string; label: string; icon: IconName }
@@ -102,6 +102,7 @@ function Shell() {
       <a href="#main-content" className="fixed top-2 left-2 z-[60] -translate-y-[200%] rounded-md bg-surface px-3 py-2 text-sm shadow focus:translate-y-0">
         Skip to content
       </a>
+      {me?.demo ? <DemoBanner /> : null}
       <header className="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[100rem] items-center gap-2 px-3 sm:px-5 lg:px-8">
           <NavLink to="/" aria-label="Lab Trends home" className="flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.02em] whitespace-nowrap text-ink no-underline">
@@ -229,6 +230,32 @@ function FirstPerson() {
           </Button>
         </div>
       </form>
+    </div>
+  )
+}
+
+/** Shown on the public demo. Flashes when a change is refused, since most controls fail quietly. */
+function DemoBanner() {
+  const [refused, setRefused] = useState(false)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const onRefused = () => {
+      setRefused(true)
+      clearTimeout(timer)
+      timer = setTimeout(() => setRefused(false), 4_000)
+    }
+    window.addEventListener(DEMO_READ_ONLY_EVENT, onRefused)
+    return () => {
+      window.removeEventListener(DEMO_READ_ONLY_EVENT, onRefused)
+      clearTimeout(timer)
+    }
+  }, [])
+  return (
+    <div role="status" className={cx('border-b px-4 py-2 text-center text-[13px] text-ink transition-colors', refused ? 'border-warn/30 bg-warn-tint' : 'border-line bg-accent-tint')}>
+      {refused ? 'That change wasn’t saved: this demo is read-only.' : 'A demo with made-up records, so changes are turned off.'}{' '}
+      <a className={linkClass} href="https://github.com/alexlmiller/lab-trends">
+        Run your own copy
+      </a>
     </div>
   )
 }

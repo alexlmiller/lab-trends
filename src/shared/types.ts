@@ -202,6 +202,8 @@ export type Me = {
   document_imports?: boolean
   /** The model that reads each kind of upload. Ids starting with @cf/ run on Cloudflare. */
   extraction_models?: { pdf: string; photo: string }
+  /** A public read-only demo (DEMO_MODE=read-only). */
+  demo?: boolean
 }
 
 /** Who may use this deployment, and the Cloudflare Access application it trusts. */

@@ -31,7 +31,7 @@ async function token(team: string, claims: Record<string, unknown> = {}, signedB
 type Row = { access_team_domain: string; access_aud: string; owner_email: string; claimed_at: string }
 
 /** Just enough D1 for the three statements auth.ts runs. `raced`: the first read misses a row that another request is about to win. */
-function database(seed: { instance?: Row; people?: string[]; broken?: boolean; raced?: boolean } = {}) {
+function database(seed: { instance?: Row; people?: string[]; subjects?: string[]; broken?: boolean; raced?: boolean } = {}) {
   const state = { instance: seed.instance ?? null, people: (seed.people ?? []).map((email) => ({ email, added_at: '2026-01-01', added_by: null })) }
   const statement = (sql: string, args: unknown[] = []) => ({
     sql,
@@ -43,6 +43,10 @@ function database(seed: { instance?: Row; people?: string[]; broken?: boolean; r
       return {}
     },
     async first() {
+      if (sql.includes('FROM subjects')) {
+        if (seed.broken) throw new Error('no such table: subjects')
+        return { n: (seed.subjects ?? []).filter((id) => !id.startsWith('demo')).length }
+      }
       return state.instance
     },
   })
@@ -240,6 +244,42 @@ describe('writes from another site', () => {
 
   it('leave reads alone', async () => {
     expect((await send('GET', { 'Sec-Fetch-Site': 'cross-site' })).status).toBe(200)
+  })
+})
+
+describe('demo mode', () => {
+  const demo = { DEMO_MODE: 'read-only' }
+  const write = (method: string, url = 'https://demo.example.com/api/subjects/demo/events') => new Request(url, { method })
+
+  it('lets anyone read a database of demo people without signing in', async () => {
+    const who = await accessIdentity(request(undefined, 'https://demo.example.com/api/me'), env(database({ subjects: ['demo', 'demo-sam'] }), demo))
+    expect(who).toMatchObject({ ok: true, owner: false })
+  })
+
+  it('refuses every change, including MCP, which only takes POSTs', async () => {
+    const db = database({ subjects: ['demo'] })
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) expect(await accessIdentity(write(method), env(db, demo))).toMatchObject({ ok: false, status: 403, code: 'demo_read_only' })
+    expect(await accessIdentity(write('POST', 'https://demo.example.com/mcp'), env(db, demo))).toMatchObject({ ok: false, code: 'demo_read_only' })
+  })
+
+  it('refuses to show anything when the database holds anyone else', async () => {
+    const who = await accessIdentity(request(), env(database({ subjects: ['demo', 'sbj_8f2a91'] }), demo))
+    expect(who).toMatchObject({ ok: false, status: 503, code: 'demo_unsafe' })
+  })
+
+  it('also ignores a valid Access sign-in, so it never hands out owner rights', async () => {
+    const who = await accessIdentity(request(await token(MINE)), env(database({ instance: claimed, subjects: ['demo'] }), demo))
+    expect(who).toMatchObject({ ok: true, owner: false })
+  })
+
+  it('needs the exact value; anything else keeps normal sign-in', async () => {
+    for (const value of ['true', '1', 'read-only ', 'readonly']) {
+      expect(await accessIdentity(request(), env(database({ subjects: ['demo'] }), { DEMO_MODE: value }))).toMatchObject({ ok: false, code: 'access_off' })
+    }
+  })
+
+  it('says so when the database has not been migrated', async () => {
+    expect(await accessIdentity(request(), env(database({ broken: true }), demo))).toMatchObject({ ok: false, code: 'not_ready' })
   })
 })
 

@@ -9,10 +9,15 @@
 // The first person to sign in becomes the owner (only OWNER_EMAIL may, when it is set).
 // The owner and the people they add (allowed_users) may use the app. Anyone else gets
 // 403, even if the Access policy let them through.
+//
+// DEMO_MODE=read-only is for a public demo of fictional records: no Access, anyone may
+// read, nobody may change anything. It refuses to serve a database that holds anyone
+// other than the demo people (subject ids starting "demo"), so switching it on for a
+// real deployment by mistake exposes nothing.
 import type { MiddlewareHandler } from 'hono'
 import { nowIso, settings, type AppEnv } from './lib'
 
-export type AuthCode = 'access_off' | 'access_mismatch' | 'unauthenticated' | 'forbidden' | 'unverified' | 'not_ready' | 'misconfigured'
+export type AuthCode = 'access_off' | 'access_mismatch' | 'unauthenticated' | 'forbidden' | 'unverified' | 'not_ready' | 'misconfigured' | 'demo_read_only' | 'demo_unsafe'
 
 type Denied = { ok: false; status: 401 | 403 | 503; error: string; code: AuthCode; team?: string; email?: string }
 export type Identity = { ok: true; email: string; owner: boolean } | Denied
@@ -115,10 +120,32 @@ export function isLocalHost(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1'
 }
 
+/** Only this exact value turns demo mode on; anything else leaves normal sign-in in place. */
+export function isDemo(env: Env): boolean {
+  return settings(env).DEMO_MODE === 'read-only'
+}
+
+export const DEMO_EMAIL = 'demo@example.invalid'
+export const DEMO_READ_ONLY = 'This is a read-only demo with sample records, so changes are turned off. Deploy your own copy to keep your results.'
+
+/** Anyone may read a demo; nobody may change it. */
+async function demoIdentity(request: Request, env: Env): Promise<Identity> {
+  if (request.method !== 'GET' && request.method !== 'HEAD') return deny(403, 'demo_read_only', DEMO_READ_ONLY)
+  let others: { n: number } | null
+  try {
+    others = await env.DB.prepare("SELECT COUNT(*) AS n FROM subjects WHERE id NOT LIKE 'demo%'").first<{ n: number }>()
+  } catch {
+    return deny(503, 'not_ready', 'The database is not set up yet.')
+  }
+  if (!others || others.n > 0) return deny(503, 'demo_unsafe', 'Demo mode only serves sample records, and this database holds other people.')
+  return { ok: true, email: DEMO_EMAIL, owner: false }
+}
+
 /** The signed-in user for a request that came through Access (a browser session or Access managed OAuth). */
 export async function accessIdentity(request: Request, env: Env): Promise<Identity> {
   const devEmail = settings(env).DEV_AUTH_EMAIL
   if (devEmail && isLocalHost(new URL(request.url).hostname)) return { ok: true, email: devEmail.trim().toLowerCase(), owner: true }
+  if (isDemo(env)) return demoIdentity(request, env)
 
   // Access always adds this header, so a request without it did not come through Access.
   const raw = request.headers.get('Cf-Access-Jwt-Assertion')

@@ -15,7 +15,7 @@
     "cf-typegen": "wrangler types --env-interface Env src/worker/worker-configuration.d.ts",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "db:seed:local": "wrangler d1 execute DB --local --file scripts/fixtures/demo.sql",
+    "db:seed:local": "node scripts/demo-data.mjs --out .wrangler/demo.sql && wrangler d1 execute DB --local --file .wrangler/demo.sql",
     "deploy": "npm run build && node scripts/deploy.mjs"
   },
   "cloudflare": {

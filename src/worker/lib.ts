@@ -14,6 +14,11 @@ export type Settings = {
   ACCESS_AUD?: string
   /** The owner's email. Without it, the first person to sign in becomes the owner. */
   OWNER_EMAIL?: string
+  /**
+   * "read-only" makes a public demo: no sign-in, reads only, and only while every person in
+   * the database is a demo person (id starting "demo"). Never set it on a deployment with real records.
+   */
+  DEMO_MODE?: string
   /** Local development only: sign every request in as this address on localhost. */
   DEV_AUTH_EMAIL?: string
   /** Any env.AI.run() model id. EXTRACTION_MODEL reads PDF text; VISION_MODEL reads photos. */

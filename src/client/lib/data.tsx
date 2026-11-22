@@ -4,8 +4,8 @@ import type { Dataset, Marker, MarkerSeries, Me } from '../../shared/types'
 import { api, ApiError } from './api'
 
 /** The app is not usable yet: sign-in is off, locked to another Access application, or this person is not on the list. */
-export type Gate = { code: 'access_off' | 'access_mismatch' | 'forbidden' | 'unverified' | 'not_ready' | 'misconfigured'; team?: string; email?: string }
-const GATE_CODES = ['access_off', 'access_mismatch', 'forbidden', 'unverified', 'not_ready', 'misconfigured']
+export type Gate = { code: 'access_off' | 'access_mismatch' | 'forbidden' | 'unverified' | 'not_ready' | 'misconfigured' | 'demo_unsafe'; team?: string; email?: string }
+const GATE_CODES = ['access_off', 'access_mismatch', 'forbidden', 'unverified', 'not_ready', 'misconfigured', 'demo_unsafe']
 
 type DataState = {
   me: Me | null

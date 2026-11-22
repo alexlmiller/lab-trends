@@ -4,7 +4,7 @@ import { normalizeCategory } from '../shared/categories'
 import { normalizeAlias, slugify } from '../shared/markers'
 import { deriveResultFields } from '../shared/semantics'
 import type { Dataset, EventKind, EventPeriod, ExtractionDocument, Marker, MarkerSeries, Panel, Result, TimelineEvent } from '../shared/types'
-import { instanceState, requireAccess, sameOriginWrites } from './auth'
+import { instanceState, isDemo, requireAccess, sameOriginWrites } from './auth'
 import { commitBatch } from './commit'
 import { extractTabular, extractWithModel, modelsFor, PROMPT_VERSION } from './extraction'
 import { HttpError, isPlanRefusal, isTransient, logMessage, newId, nowIso, parseJson, PLAN_REFUSAL_MESSAGE, sha256Hex, sourceKindFor, type AppEnv } from './lib'
@@ -38,6 +38,7 @@ app.get('/me', async (c) => {
     subjects: subjects.results,
     document_imports: Boolean(c.env.EXTRACTIONS),
     extraction_models: modelsFor(c.env),
+    demo: isDemo(c.env),
   })
 })
 

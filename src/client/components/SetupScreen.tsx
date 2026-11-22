@@ -27,6 +27,8 @@ export function SetupScreen({ gate }: { gate: Gate }) {
         <NotReady />
       ) : gate.code === 'misconfigured' ? (
         <Misconfigured />
+      ) : gate.code === 'demo_unsafe' ? (
+        <DemoUnsafe />
       ) : (
         <Unverified />
       )}
@@ -159,6 +161,23 @@ function NotReady() {
       <div>
         <Reload />
       </div>
+    </Screen>
+  )
+}
+
+function DemoUnsafe() {
+  return (
+    <Screen
+      title="Demo mode is on"
+      lead={
+        <>
+          This app has <code>DEMO_MODE</code> set, which shows everything to anyone without signing in. This database holds people other than the sample ones, so the app refuses to show anything.
+        </>
+      }
+    >
+      <Card className="text-[13.5px]">
+        In the Cloudflare dashboard, open <b>Workers &amp; Pages</b>, select this app’s Worker, then <b>Settings</b> and <b>Variables and Secrets</b>, and delete <code>DEMO_MODE</code>. Sign-in then works as before.
+      </Card>
     </Screen>
   )
 }
