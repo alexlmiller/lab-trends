@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "lab-trends", "runtimeExecutable": "npx", "runtimeArgs": ["vite", "--port", "5180", "--strictPort"], "port": 5180 },
+    { "name": "lab-trends-built", "runtimeExecutable": "npx", "runtimeArgs": ["vite", "preview", "--port", "5181", "--strictPort"], "port": 5181 }
+  ]
+}

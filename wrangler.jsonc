@@ -1,0 +1,40 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lab-trends",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Nothing account-specific belongs in this file: no account ID, domain, resource IDs
+  // or email addresses. Wrangler finds or creates the database, bucket and queue by the
+  // names below. Sign-in is Cloudflare Access on the Worker (README: "Turn on sign-in");
+  // until it is on, the API refuses every request.
+  "workers_dev": true,
+  "preview_urls": false,
+
+  // Optional settings (extraction models, an explicit Access application, the owner) are
+  // Worker variables or secrets set in Cloudflare, and survive deploys (README: "Settings").
+  "keep_vars": true,
+
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/mcp", "/mcp/*"]
+  },
+
+  "d1_databases": [{ "binding": "DB", "database_name": "lab-trends", "migrations_dir": "migrations" }],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "lab-trends-files" }],
+  "queues": {
+    "producers": [{ "binding": "EXTRACTIONS", "queue": "lab-trends-extractions" }],
+    "consumers": [
+      {
+        "queue": "lab-trends-extractions",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 4
+      }
+    ]
+  },
+  "ai": { "binding": "AI" },
+
+  "observability": { "enabled": true }
+}

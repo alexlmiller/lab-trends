@@ -1,0 +1,44 @@
+Third-party material included in this repository.
+
+LOINC
+-----
+The marker catalog (migrations/0002_seed_markers.sql) includes LOINC codes.
+
+This material contains content from LOINC (http://loinc.org). LOINC is
+copyright (c) 1995-2026, Regenstrief Institute, Inc. and the Logical
+Observation Identifiers Names and Codes (LOINC) Committee and is available at
+no cost under the license at http://loinc.org/license. LOINC(R) is a
+registered United States trademark of Regenstrief Institute, Inc.
+
+Inter
+-----
+The built app bundles the Inter typeface from the @fontsource-variable/inter
+npm package. The font files are not in this repository.
+
+Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter).
+Licensed under the SIL Open Font License, Version 1.1
+(https://openfontlicense.org); the full text ships in the package's LICENSE
+file.
+
+Lucide icons
+------------
+src/client/components/Icon.tsx contains icon paths from Lucide
+(https://lucide.dev).
+
+ISC License
+
+Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part
+of Feather (MIT). All other copyright (c) for Lucide are held by Lucide
+Contributors 2022.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.

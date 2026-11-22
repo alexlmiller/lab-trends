@@ -1,0 +1,90 @@
+import { SelectField } from './SelectField'
+import { useState } from 'react'
+import { formatDate } from '../../shared/dates'
+import type { Result } from '../../shared/types'
+import { api } from '../lib/api'
+import { Alert, Button, Field, inputClass, Modal } from './ui'
+
+export function ResultEditModal({ subjectId, result, markerName, onClose, onSaved }: { subjectId: string; result: Result; markerName: string; onClose: () => void; onSaved: () => void }) {
+  const [rawValue, setRawValue] = useState(result.raw_value)
+  const [units, setUnits] = useState(result.raw_units ?? '')
+  const [reference, setReference] = useState(result.reference_text ?? '')
+  const [flag, setFlag] = useState(result.flag_source === 'reported' ? (result.lab_flag ?? '') : '')
+  const [notes, setNotes] = useState(result.notes ?? '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      await api.patch(`/subjects/${subjectId}/results/${result.id}`, {
+        raw_value: rawValue,
+        raw_units: units || null,
+        reference_text: reference || null,
+        lab_flag: flag || null,
+        notes: notes || null,
+      })
+      onSaved()
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
+  }
+  const remove = async () => {
+    setBusy(true)
+    try {
+      await api.del(`/subjects/${subjectId}/results/${result.id}`)
+      onSaved()
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal
+      title={`${markerName} · ${formatDate(result.draw_date)}`}
+      onClose={onClose}
+      footer={
+        <>
+          {confirmDelete ? (
+            <Button variant="danger" onClick={remove} busy={busy} className="mr-auto">
+              Delete permanently
+            </Button>
+          ) : (
+            <Button variant="ghost" icon="trash" onClick={() => setConfirmDelete(true)} className="mr-auto">
+              Delete
+            </Button>
+          )}
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={save} busy={busy}>
+            Save correction
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-3">
+        <p className="m-0 text-[13px] text-ink-dim">Enter values exactly as the report shows them. Numbers, ranges and inferred flags are recomputed from the text; the change is kept in the result’s revision history.</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Value as reported">
+            <input className={inputClass} value={rawValue} onChange={(e) => setRawValue(e.target.value)} />
+          </Field>
+          <Field label="Units">
+            <input className={inputClass} value={units} onChange={(e) => setUnits(e.target.value)} />
+          </Field>
+          <Field label="Reference range as reported">
+            <input className={inputClass} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. 3.8-10.8 or <3.0" />
+          </Field>
+          <SelectField label="Flag on the report" value={flag} onChange={setFlag}
+            options={[{ value: '', label: 'None (infer from range)' }, ...['low', 'high', 'critical', 'abnormal'].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) }))]} />
+        </div>
+        <Field label="Note">
+          <textarea className={`${inputClass} h-20 py-2`} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </Field>
+        {confirmDelete ? <Alert tone="warn">Deleting removes this result from every chart. A copy is kept in the revision log.</Alert> : null}
+        {error ? <Alert tone="error">{error}</Alert> : null}
+      </div>
+    </Modal>
+  )
+}

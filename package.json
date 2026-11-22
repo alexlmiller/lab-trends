@@ -1,0 +1,67 @@
+{
+  "name": "lab-trends",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:ai": "vite --mode ai",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.app.json",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test && npm run build",
+    "check:neutral": "node scripts/check-neutral.mjs",
+    "cf-typegen": "wrangler types --env-interface Env src/worker/worker-configuration.d.ts",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "db:seed:local": "wrangler d1 execute DB --local --file scripts/fixtures/demo.sql",
+    "deploy": "npm run build && npm run db:migrate:remote && wrangler deploy",
+    "deploy:first": "npm run build && wrangler deploy && npm run db:migrate:remote"
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "Every lab result, draw, event and setting. Created for you; keep the default name unless you already have a database called `lab-trends`."
+      },
+      "FILES": {
+        "description": "The lab reports and spreadsheets you upload, kept private. R2 has to be enabled on the account first, which asks for a payment method even though this app stays within the free allowance."
+      },
+      "EXTRACTIONS": {
+        "description": "Queue that reads uploaded PDFs and photos in the background."
+      },
+      "AI": {
+        "description": "Workers AI reads lab values out of PDFs and photos. Uploads are not sent anywhere outside Cloudflare."
+      }
+    }
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "agents": "^0.33.0",
+    "fflate": "^0.8.3",
+    "hono": "^4.13.19",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router": "^8.5.2",
+    "unpdf": "^2.1.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.70.0",
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1",
+    "wrangler": "^4.164.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261116.1": true,
+    "workerd@1.20261117.1": true
+  }
+}
