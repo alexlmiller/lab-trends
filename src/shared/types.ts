@@ -6,7 +6,6 @@ export type ExtractedResult = {
   raw_name: string
   raw_test_category?: string | null
   raw_value: string
-  comparator?: string | null
   raw_units?: string | null
   reference_text?: string | null
   lab_flag?: string | null
@@ -16,7 +15,7 @@ export type ExtractedResult = {
   warnings?: string[]
   // Review state, filled by the server's marker resolution and edited by the user.
   marker_id?: string | null
-  match?: 'loinc' | 'slug' | 'alias' | 'manual' | 'new' | null
+  match?: 'slug' | 'alias' | 'manual' | 'new' | null
   new_marker?: { name: string; category: string; default_units: string | null } | null
   include?: boolean
   existing?: { result_id: string; raw_value: string; raw_units: string | null } | null
@@ -65,7 +64,8 @@ export type Candidate = {
 
 export type ImportBatch = {
   id: string
-  status: 'open' | 'committed' | 'discarded'
+  /** "committing" is an import being saved right now; it is open again if that save dies. */
+  status: 'open' | 'committing' | 'committed'
   created_at: string
   created_by: string | null
   committed_at: string | null
@@ -81,11 +81,13 @@ export type CommitSummary = {
   duplicates_skipped: number
   markers_created: number
   skipped: number
+  /** Two different values for one test on one date in the same import: the first was saved, the other was not. */
+  same_day_conflicts?: { date: string; name: string; kept: string; dropped: string }[]
 }
 
 // ─── Committed records ──────────────────────────────────────────────────
 
-export type Subject = { id: string; display_name: string; sex: string | null; birth_date: string | null }
+export type Subject = { id: string; display_name: string }
 
 export type Marker = {
   id: string
@@ -97,9 +99,6 @@ export type Marker = {
   default_units: string | null
   description: string | null
   related_slugs: string[]
-  default_ref_low: number | null
-  default_ref_high: number | null
-  default_ref_text: string | null
   is_custom: boolean
   status: string
   aliases?: string[]
@@ -142,14 +141,14 @@ export type Panel = {
   panel_name: string | null
   notes: string | null
   tags: string[]
-  source_file_id: string | null
-  source_filename: string | null
+  /** Every uploaded report that put results on this draw. */
+  sources: { file_id: string; filename: string }[]
   result_count: number
   flagged_count: number
 }
 
 export type PanelDetail = Panel & {
-  results: (Result & { marker_name: string; marker_category: string; previous: Result | null })[]
+  results: (Result & { marker_name: string; marker_category: string })[]
 }
 
 export type PersonalTarget = {
@@ -182,7 +181,7 @@ export type EventKind = 'medication' | 'procedure' | 'illness' | 'lifestyle' | '
 
 export type SavedView = { id: string; name: string; path: string; created_at: string }
 
-export type Preferences = { starred_marker_ids: string[]; section_order: string[]; hidden_marker_ids: string[] }
+export type Preferences = { starred_marker_ids: string[]; hidden_marker_ids: string[] }
 
 /** Everything the charting surfaces need in one payload. */
 export type Dataset = {
@@ -202,6 +201,8 @@ export type Me = {
   document_imports?: boolean
   /** The model that reads each kind of upload. Ids starting with @cf/ run on Cloudflare. */
   extraction_models?: { pdf: string; photo: string }
+  /** Model requests pass through an AI Gateway, which can log or cache them. */
+  ai_gateway?: boolean
 }
 
 /** Who may use this deployment, and the Cloudflare Access application it trusts. */

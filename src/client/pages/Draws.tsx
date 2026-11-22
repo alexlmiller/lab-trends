@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import { formatDate } from '../../shared/dates'
 import type { Panel } from '../../shared/types'
 import { Alert, Button, ButtonLink, Card, cx, Empty, Field, inputClass, Modal, PageHeader } from '../components/ui'
+import { useAction } from '../lib/action'
 import { api } from '../lib/api'
 import { useDataset } from '../lib/data'
 import { drawPath } from '../lib/history'
@@ -43,7 +44,7 @@ export function DrawsPage() {
                   <td className="draw-count px-3 py-2"><span>Results </span>{p.result_count}</td>
                   <td className={cx('draw-count px-3 py-2', p.flagged_count > 0 && 'font-semibold text-high')}><span>Flagged </span>{p.flagged_count}</td>
                   <td className="draw-context px-3 py-2 text-ink-dim">{p.tags.join(', ')}</td>
-                  <td className="draw-context max-w-[260px] truncate px-3 py-2 text-ink-faint">{p.source_filename ?? ''}</td>
+                  <td className="draw-context max-w-[260px] truncate px-3 py-2 text-ink-faint">{p.sources.map((s) => s.filename).join(', ')}</td>
                 </tr>
               ))}
             </tbody>
@@ -62,8 +63,7 @@ export function PanelEditModal({ panel, onClose, onSaved }: { panel: Panel; onCl
   const [provider, setProvider] = useState(panel.ordering_provider ?? '')
   const [tags, setTags] = useState(panel.tags.join(', '))
   const [notes, setNotes] = useState(panel.notes ?? '')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, run } = useAction()
   return (
     <Modal
       title="Edit draw"
@@ -75,21 +75,8 @@ export function PanelEditModal({ panel, onClose, onSaved }: { panel: Panel; onCl
             variant="primary"
             busy={busy}
             onClick={async () => {
-              setBusy(true)
-              try {
-                await api.patch(`/subjects/${ds.subjectId}/panels/${panel.id}`, {
-                  draw_date: date,
-                  draw_time: time || null,
-                  facility,
-                  ordering_provider: provider,
-                  notes,
-                  tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
-                })
-                onSaved()
-              } catch (e) {
-                setError((e as Error).message)
-                setBusy(false)
-              }
+              const body = { draw_date: date, draw_time: time || null, facility, ordering_provider: provider, notes, tags: tags.split(',').map((t) => t.trim()).filter(Boolean) }
+              if (await run(() => api.patch(`/subjects/${ds.subjectId}/panels/${panel.id}`, body))) onSaved()
             }}
           >
             Save

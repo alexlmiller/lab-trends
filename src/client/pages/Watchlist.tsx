@@ -12,7 +12,8 @@ import { Alert, Card, cx, Empty, linkClass, PageHeader, SectionHeader } from '..
 import { api } from '../lib/api'
 import { useDataset, useParam, useUpdateParams } from '../lib/data'
 import { PRESETS } from '../lib/presets'
-import { relativeToReference } from '../lib/report'
+import { resultStatus, statusTone } from '../../shared/semantics'
+import { STATUS_PHRASE } from '../lib/series'
 
 const narrowScreen = window.matchMedia('(max-width: 640px)')
 const subscribe = (notify: () => void) => {
@@ -133,15 +134,16 @@ export function WatchlistPage() {
                     </th>
                     {panels.map((p) => {
                       const r = m.results.find((v) => v.panel_id === p.id)
-                      const d = r ? relativeToReference(r) : undefined
-                      const out = d === 'high' || d === 'low'
+                      const status = resultStatus(r)
+                      const d = statusTone(status)
+                      const out = d !== null
                       const isSel = m === selected && p === panel
                       return (
                         <td key={p.id} className="p-0.5">
                           <button
                             type="button"
                             aria-pressed={isSel}
-                            aria-label={[m.name, formatDate(p.draw_date), r ? `${r.raw_value} ${r.raw_units ?? ''}` : 'not tested', out ? (d === 'high' ? 'above range' : 'below range') : null].filter(Boolean).join(', ')}
+                            aria-label={[m.name, formatDate(p.draw_date), r ? `${r.raw_value} ${r.raw_units ?? ''}` : 'not tested', out ? STATUS_PHRASE[status] : null].filter(Boolean).join(', ')}
                             onClick={() => update({ test: m.id, draw: p.id }, true)}
                             className={cx(
                               'flex min-h-10 w-full items-center justify-end gap-1 rounded-md px-2 text-right hover:bg-sunken',
@@ -151,7 +153,7 @@ export function WatchlistPage() {
                               d === 'low' && 'font-semibold text-low',
                             )}
                           >
-                            {out ? <span aria-hidden>{d === 'high' ? '↑' : '↓'}</span> : null}
+                            {out ? <span aria-hidden>{status === 'high' ? '↑' : status === 'low' ? '↓' : '!'}</span> : null}
                             <span className="truncate">{r?.raw_value ?? '—'}</span>
                           </button>
                         </td>

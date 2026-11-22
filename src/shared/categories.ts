@@ -37,9 +37,6 @@ export function categoryOrder(slug: string): number {
   return BY_SLUG.get(slug)?.order ?? 500
 }
 
-export function sortCategories(slugs: string[], saved: string[] = []): string[] {
-  const set = new Set(slugs)
-  const head = saved.filter((s) => set.has(s))
-  const rest = slugs.filter((s) => !head.includes(s)).sort((a, b) => categoryOrder(a) - categoryOrder(b) || a.localeCompare(b))
-  return [...head, ...rest]
+export function sortCategories(slugs: string[]): string[] {
+  return [...slugs].sort((a, b) => categoryOrder(a) - categoryOrder(b) || a.localeCompare(b))
 }

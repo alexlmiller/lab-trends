@@ -4,14 +4,14 @@
 // outside its reported range, so anomalies stand out.
 import { useState } from 'react'
 import { formatDate } from '../../shared/dates'
-import { parseReferenceRange } from '../../shared/semantics'
+import { isOutOfRange, parseReferenceRange, relativeToReference, resultStatus, statusTone } from '../../shared/semantics'
 import { numericUnitKey } from '../../shared/units'
 import type { MarkerSeries, Panel, Result } from '../../shared/types'
 import { api } from '../lib/api'
 import { useDataset } from '../lib/data'
 import { formatPct } from '../lib/format'
 import { drawHistoryPath, drawPath } from '../lib/history'
-import { priorResult, relativeToReference, resultChange } from '../lib/report'
+import { priorResult, resultChange } from '../lib/report'
 import { Icon } from './Icon'
 import { SelectField } from './SelectField'
 import { Button, ButtonAnchor, ButtonLink, cx, StatusBadge } from './ui'
@@ -46,15 +46,10 @@ export function DrawSwitcher({ panels, value, onChange, label = 'Report' }: { pa
 /** HIGH/LOW for out-of-range values only; nothing for in-range or unranged results. */
 export function OutOfRange({ result }: { result: Result }) {
   if (result.lab_flag === 'critical') return <StatusBadge status="critical" />
-  const direction = relativeToReference(result)
-  if (direction === 'high' || direction === 'low') return <StatusBadge status={direction} />
-  if (result.lab_flag === 'abnormal') return <StatusBadge status="high">Flagged</StatusBadge>
+  const status = resultStatus(result)
+  if (status === 'high' || status === 'low') return <StatusBadge status={status} />
+  if (status === 'flagged') return <StatusBadge status="high">Flagged</StatusBadge>
   return null
-}
-
-export function isOutOfRange(r: Result): boolean {
-  const d = relativeToReference(r)
-  return d === 'high' || d === 'low' || r.lab_flag === 'critical' || r.lab_flag === 'abnormal'
 }
 
 /**
@@ -129,8 +124,8 @@ export function ReferenceGauge({ result, previous, size = 'sm', centered }: { re
 /** One result in a report list: name, value, range viewer, out-of-range status; expands in place. */
 export function ResultRow({ marker, result, open, onToggle, onEdit, showDate, starred }: { marker: MarkerSeries; result: Result; open: boolean; onToggle: () => void; onEdit?: () => void; showDate?: boolean; starred?: boolean }) {
   const previous = priorResult(marker, { id: result.panel_id, draw_date: result.draw_date, draw_time: result.draw_time ?? null } as Panel)
-  const direction = relativeToReference(result)
-  const out = isOutOfRange(result)
+  const tone = statusTone(resultStatus(result))
+  const out = tone !== null
   return (
     <div className={cx('border-b border-line last:border-b-0', open && 'bg-elevated')}>
       <button
@@ -147,7 +142,7 @@ export function ResultRow({ marker, result, open, onToggle, onEdit, showDate, st
           </span>
           {showDate ? <span className="block text-[12px] text-ink-faint">{formatDate(result.draw_date)}</span> : null}
         </span>
-        <span className={cx('text-left text-[14px] font-semibold whitespace-nowrap tabular', direction === 'high' && 'text-high', direction === 'low' && 'text-low')}>
+        <span className={cx('text-left text-[14px] font-semibold whitespace-nowrap tabular', tone === 'high' && 'text-high', tone === 'low' && 'text-low')}>
           {result.raw_value} <span className="text-[12px] font-normal text-ink-faint">{result.raw_units}</span>
         </span>
         <span className="col-span-2 row-start-2 flex min-w-0 items-center gap-3 md:col-span-1 md:row-start-auto md:contents">
@@ -186,7 +181,7 @@ export function ResultComparison({
   return (
     <dl className="m-0 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-line tabular">
       {[before, after].map((r, i) => {
-        const d = r ? relativeToReference(r) : undefined
+        const d = r ? statusTone(resultStatus(r)) : null
         return (
           <div key={i} className={cx(cell, 'bg-surface')}>
             <dt className="text-[11.5px] text-ink-faint">{labels[i]}</dt>
@@ -265,13 +260,23 @@ export function ResultDetail({ marker, result, panel: panelProp, onEdit }: { mar
             Open draw
           </ButtonLink>
         )}
-        {panel.source_file_id ? (
-          <ButtonAnchor size="sm" variant="ghost" icon="external" href={`/api/subjects/${encodeURIComponent(ds.subjectId)}/files/${encodeURIComponent(panel.source_file_id)}`}>
-            Source report
-          </ButtonAnchor>
-        ) : null}
+        <SourceReports panel={panel} />
       </div>
     </div>
+  )
+}
+
+/** A link to each uploaded report that put results on a draw. */
+export function SourceReports({ panel }: { panel: Panel }) {
+  const ds = useDataset()
+  return (
+    <>
+      {panel.sources.map((s, i) => (
+        <ButtonAnchor key={s.file_id} size="sm" variant="ghost" icon="external" title={s.filename} href={`/api/subjects/${encodeURIComponent(ds.subjectId)}/files/${encodeURIComponent(s.file_id)}`}>
+          {panel.sources.length > 1 ? `Source report ${i + 1}` : 'Source report'}
+        </ButtonAnchor>
+      ))}
+    </>
   )
 }
 

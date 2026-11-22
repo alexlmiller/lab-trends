@@ -8,16 +8,16 @@ import { dateFromDay, dayNumber } from '../shared/dates'
 import { parseLabValue, sameReportedValue } from '../shared/semantics'
 import type { ExtractedPanel, ExtractionDocument } from '../shared/types'
 
-type MarkerRow = { id: string; slug: string; name: string; long_name: string | null; loinc_code: string | null; category: string; status: string; merged_into_id: string | null }
+type MarkerRow = { id: string; slug: string; name: string; long_name: string | null; category: string; status: string; merged_into_id: string | null }
 
 export type MarkerIndex = {
   byId: Map<string, MarkerRow>
-  lookup: (rawName: string, loinc?: string | null) => { id: string; match: 'loinc' | 'slug' | 'alias' } | null
+  lookup: (rawName: string) => { id: string; match: 'slug' | 'alias' } | null
 }
 
 export async function loadMarkerIndex(db: D1Database, subjectId: string): Promise<MarkerIndex> {
   const [markers, aliases] = await db.batch([
-    db.prepare('SELECT id, slug, name, long_name, loinc_code, category, status, merged_into_id FROM lab_markers'),
+    db.prepare('SELECT id, slug, name, long_name, category, status, merged_into_id FROM lab_markers'),
     db.prepare("SELECT marker_id, normalized_name, scope FROM lab_marker_aliases WHERE scope IN ('global', ?)").bind(subjectId),
   ])
   const byId = new Map<string, MarkerRow>()
@@ -34,27 +34,26 @@ export async function loadMarkerIndex(db: D1Database, subjectId: string): Promis
   }
   const bySlug = new Map<string, string>()
   const byName = new Map<string, string>()
-  const byLoinc = new Map<string, string>()
   for (const m of byId.values()) {
     bySlug.set(m.slug, m.id)
-    byName.set(normalizeAlias(m.name), m.id)
-    if (m.long_name) byName.set(normalizeAlias(m.long_name), m.id)
-    if (m.loinc_code) byLoinc.set(m.loinc_code, m.id)
+    for (const name of [m.name, m.long_name]) {
+      const key = name ? normalizeAlias(name) : ''
+      if (key) byName.set(key, m.id)
+    }
   }
   return {
     byId,
-    lookup(rawName, loinc) {
-      if (loinc && byLoinc.has(loinc)) {
-        const id = follow(byLoinc.get(loinc)!)
-        if (id) return { id, match: 'loinc' }
-      }
+    lookup(rawName) {
+      // A name with no letters or digits has nothing to match on; it never borrows another test's marker.
       const norm = normalizeAlias(rawName)
+      if (!norm) return null
       for (const map of [subjectAlias, globalAlias]) {
         const hit = map.get(norm)
         const id = hit ? follow(hit) : null
         if (id) return { id, match: 'alias' }
       }
-      const slugHit = bySlug.get(slugify(rawName)) ?? byName.get(norm)
+      const slug = slugify(rawName)
+      const slugHit = (slug ? bySlug.get(slug) : undefined) ?? byName.get(norm)
       const id = slugHit ? follow(slugHit) : null
       return id ? { id, match: 'slug' } : null
     },
@@ -130,7 +129,28 @@ export async function annotateDocument(db: D1Database, subjectId: string, doc: E
     }
     panel.near_duplicate = nearDuplicate(panel, byDate)
   }
+  markSameDayRepeats(doc)
   return doc
+}
+
+const REPEAT_NOTE = 'Also listed as '
+
+/** Two different values for one test on one date: only one can be saved, so the later row says so. */
+function markSameDayRepeats(doc: ExtractionDocument) {
+  const first = new Map<string, string>()
+  for (const panel of doc.panels) {
+    for (const row of panel.results) {
+      if (row.warnings?.some((w) => w.startsWith(REPEAT_NOTE))) row.warnings = row.warnings.filter((w) => !w.startsWith(REPEAT_NOTE))
+      const marker = row.marker_id ?? (row.new_marker ? `new:${normalizeAlias(row.new_marker.name) || row.new_marker.name}` : null)
+      if (!marker || !panel.draw_date || row.include === false) continue
+      const key = `${panel.draw_date}|${marker}`
+      const earlier = first.get(key)
+      if (earlier === undefined) first.set(key, row.raw_value)
+      else if (!sameReportedValue(earlier, row.raw_value)) {
+        row.warnings = [...(row.warnings ?? []), `${REPEAT_NOTE}${earlier} on this date. One value per test per date is saved, so untick the one to leave out.`]
+      }
+    }
+  }
 }
 
 /** Saved results by draw date: one draw's id and its values by marker. */

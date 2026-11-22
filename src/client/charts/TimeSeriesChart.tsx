@@ -17,7 +17,7 @@ import { mean, stdev } from '../../shared/stats'
 import { chartOccurrences } from '../../shared/events'
 import type { TimelineEvent } from '../../shared/types'
 import { cx } from '../components/ui'
-import type { Point } from '../lib/series'
+import { statusColor, type Point } from '../lib/series'
 import { formatTick, shouldAutoLog, timeTicks, useElementWidth, yScale, type YScale } from './scale'
 
 export type ChartSeries = {
@@ -426,8 +426,8 @@ export function TimeSeriesChart({
                 const cxp = xOf(x.day)
                 const active = hover === x.day
                 const isLast = p === primary && x === lastPrimary
-                const out = x.status === 'high' || x.status === 'low'
-                const fill = x.status === 'high' ? 'var(--color-high)' : x.status === 'low' ? 'var(--color-low)' : p.s.color
+                const out = statusColor(x.status) !== null
+                const fill = statusColor(x.status) ?? p.s.color
                 const r = (out ? 4.5 : 3.5) + (isLast ? 1 : 0)
                 return (
                   <g key={`pt-${p.s.id}-${x.resultId}`}>
@@ -457,7 +457,7 @@ export function TimeSeriesChart({
                 height={22}
                 rx={6}
                 fill="var(--color-surface)"
-                stroke={lastPrimary.status === 'high' ? 'var(--color-high)' : lastPrimary.status === 'low' ? 'var(--color-low)' : 'var(--color-line-strong)'}
+                stroke={statusColor(lastPrimary.status) ?? 'var(--color-line-strong)'}
               />
               <text x={xOf(lastPrimary.day) + 16} y={lastPrimary.y + 4} fontSize={12} fontWeight={700} fill="var(--color-ink)" className="tabular">
                 {lastPrimary.raw}
@@ -544,7 +544,7 @@ function Tooltip({ day, plotted, events, x, width, mode }: { day: number; plotte
           <div key={p.s.id} className="flex items-baseline gap-2">
             <span className="inline-block h-2 w-2 shrink-0 translate-y-[-1px] rounded-full" style={{ background: p.s.color }} />
             <span className="min-w-0 truncate text-ink-dim">{p.s.label}</span>
-            <span className={cx('ml-auto pl-2 font-semibold tabular', pt?.status === 'high' && 'text-high', pt?.status === 'low' && 'text-low', !pt && 'text-ink-faint')}>
+            <span className={cx('ml-auto pl-2 font-semibold tabular', (pt?.status === 'high' || pt?.status === 'flagged') && 'text-high', pt?.status === 'low' && 'text-low', !pt && 'text-ink-faint')}>
               {pt ? `${pt.raw} ${pt.units ?? ''}` : '—'}
               {pt && mode === 'range' ? <span className="font-normal text-ink-faint"> · {rangeWords(pt.nv)}</span> : null}
               {pt && mode === 'z' ? <span className="font-normal text-ink-faint"> · {pt.nv.toFixed(1)} SD</span> : null}

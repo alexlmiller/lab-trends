@@ -6,7 +6,7 @@ import { api } from '../lib/api'
 import { useDataset } from '../lib/data'
 import { formatNumber, plural } from '../lib/format'
 import { resultChange } from '../lib/report'
-import { statusOf } from '../lib/series'
+import { resultStatus, statusTone } from '../../shared/semantics'
 import { DeleteMarkerModal } from './DeleteMarker'
 import { ResultEditModal } from './ResultEdit'
 import { Alert, Button, cx, Field, inputClass, SectionHeader, StatusBadge } from './ui'
@@ -47,7 +47,7 @@ export function TestRecord({ marker }: { marker: MarkerSeries }) {
               {[...marker.results].reverse().map((r, i, arr) => {
                 const before = arr[i + 1]
                 const change = resultChange(before, r)
-                const st = statusOf(r)
+                const st = statusTone(resultStatus(r))
                 return (
                   <tr key={r.id} className="border-t border-line hover:bg-elevated">
                     <td className="py-1.5 pr-3 whitespace-nowrap">
@@ -73,7 +73,7 @@ export function TestRecord({ marker }: { marker: MarkerSeries }) {
                     <td data-label="Flag" className="py-1.5 pr-3">
                       {r.lab_flag ? (
                         <span title={r.flag_source === 'inferred' ? 'Inferred from the reported range' : 'Flagged on the report'}>
-                          <StatusBadge status={st === 'unknown' ? 'high' : st}>{r.lab_flag}</StatusBadge>
+                          <StatusBadge status={st ?? 'high'}>{r.lab_flag}</StatusBadge>
                           {r.flag_source === 'inferred' ? <span className="ml-1 text-[11px] text-ink-faint">inferred</span> : null}
                         </span>
                       ) : null}
