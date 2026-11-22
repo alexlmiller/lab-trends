@@ -141,7 +141,15 @@ Cloudflare rebuilds and redeploys on push, and the deploy applies new migrations
 
 - D1 Time Travel restores the database to an earlier point: `npx wrangler d1 time-travel info DB`.
 - Offline copy: `npx wrangler d1 export DB --remote --output <file>`. Settings > Export CSV gives a results file that can be imported again.
-- To remove everything, delete the Worker, the D1 database, the R2 bucket and the queue in the Cloudflare dashboard.
+- To remove everything, first detach the Worker from the queue: Cloudflare refuses to delete either while they are attached. Then delete the Worker, the queue, the D1 database and the R2 bucket.
+
+  ```bash
+  npx wrangler queues consumer remove lab-trends-extractions lab-trends
+  npx wrangler delete --name lab-trends
+  npx wrangler queues delete lab-trends-extractions
+  npx wrangler d1 delete lab-trends
+  npx wrangler r2 bucket delete lab-trends-files
+  ```
 
 ## Architecture
 
