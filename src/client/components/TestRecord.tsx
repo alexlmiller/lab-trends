@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { formatDate } from '../../shared/dates'
-import type { MarkerSeries, Result } from '../../shared/types'
+import type { MarkerSeries, PersonalTarget, Result } from '../../shared/types'
+import { useAction } from '../lib/action'
 import { api } from '../lib/api'
 import { useDataset } from '../lib/data'
 import { formatNumber, plural } from '../lib/format'
@@ -130,26 +131,14 @@ export function TargetEditor({ marker }: { marker: MarkerSeries }) {
   const [low, setLow] = useState(marker.target?.target_low?.toString() ?? '')
   const [high, setHigh] = useState(marker.target?.target_high?.toString() ?? '')
   const [note, setNote] = useState(marker.target?.note ?? '')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const save = async (clear = false) => {
-    setError('')
-    try {
-      setBusy(true)
-      await api.put(
-        `/subjects/${ds.subjectId}/targets/${marker.id}`,
-        clear
-          ? {}
-          : { target_low: low === '' ? null : Number(low), target_high: high === '' ? null : Number(high), note: note || null },
-      )
-      await ds.reload()
+  const { busy, error, run } = useAction()
+  const save = (clear = false) =>
+    run(async () => {
+      const body = clear ? {} : { target_low: low === '' ? null : Number(low), target_high: high === '' ? null : Number(high), note: note || null }
+      const { target } = await api.put<{ target: PersonalTarget | null }>(`/subjects/${ds.subjectId}/targets/${marker.id}`, body)
+      ds.patch((d) => ({ ...d, markers: d.markers.map((m) => (m.id === marker.id ? { ...m, target } : m)) }))
       setOpen(false)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
+    })
   const t = marker.target
   return (
     <div className="mt-4 border-t border-line pt-3">

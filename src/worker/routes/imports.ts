@@ -220,7 +220,7 @@ async function loadBatch(db: D1Database, sid: string, batchId: string, withDocum
     db.prepare(
       `SELECT x.id, x.batch_id, x.file_id, x.source_kind, x.status, x.model, x.privacy_mode, x.error, x.created_at, x.updated_at,
          ${withDocuments ? 'x.document' : 'NULL AS document'}, f.filename, f.mime_type
-       FROM extraction_candidates x LEFT JOIN files f ON f.id = x.file_id WHERE x.batch_id = ? AND x.subject_id = ? ORDER BY x.created_at`,
+       FROM extraction_candidates x LEFT JOIN files f ON f.id = x.file_id WHERE x.batch_id = ? AND x.subject_id = ? ORDER BY x.rowid`,
     ).bind(batchId, sid),
   ])
   const batch = batches.results[0] as Record<string, unknown> | undefined

@@ -2,13 +2,12 @@
 // switcher, the range viewer, a result row with its expanded detail, and the
 // previous → this draw comparison. Status is shown only when a value is
 // outside its reported range, so anomalies stand out.
-import { useState } from 'react'
 import { formatDate } from '../../shared/dates'
 import { isOutOfRange, parseReferenceRange, relativeToReference, resultStatus, statusTone } from '../../shared/semantics'
 import { numericUnitKey } from '../../shared/units'
 import type { MarkerSeries, Panel, Result } from '../../shared/types'
-import { api } from '../lib/api'
-import { useDataset } from '../lib/data'
+import { useAction } from '../lib/action'
+import { useDataset, useSavePreferences } from '../lib/data'
 import { formatPct } from '../lib/format'
 import { drawHistoryPath, drawPath } from '../lib/history'
 import { priorResult, resultChange } from '../lib/report'
@@ -283,7 +282,8 @@ export function SourceReports({ panel }: { panel: Panel }) {
 /** Star a test onto the watchlist (shared with All tests and the watchlist page). */
 export function FollowButton({ markerId, size = 'sm' }: { markerId: string; size?: 'sm' | 'md' }) {
   const ds = useDataset()
-  const [busy, setBusy] = useState(false)
+  const save = useSavePreferences()
+  const { busy, run } = useAction()
   const starred = ds.preferences.starred_marker_ids
   const on = starred.includes(markerId)
   return (
@@ -294,15 +294,7 @@ export function FollowButton({ markerId, size = 'sm' }: { markerId: string; size
       aria-pressed={on}
       title={on ? 'On watchlist' : 'Add to watchlist'}
       className={cx('max-sm:px-2', on && 'text-accent-deep')}
-      onClick={async () => {
-        setBusy(true)
-        try {
-          await api.put(`/subjects/${ds.subjectId}/preferences`, { starred_marker_ids: on ? starred.filter((id) => id !== markerId) : [...starred, markerId] })
-          await ds.reload()
-        } finally {
-          setBusy(false)
-        }
-      }}
+      onClick={() => run(() => save({ starred_marker_ids: on ? starred.filter((id) => id !== markerId) : [...starred, markerId] }))}
     >
       {!busy && <Icon name="star" filled={on} className={on ? 'text-star' : undefined} />}
       <span className="max-sm:sr-only">{on ? 'On watchlist' : 'Watch'}</span>

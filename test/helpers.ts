@@ -17,6 +17,8 @@ export type TestDatabase = D1Database & {
   plan: (sql: string, ...args: SQLInputValue[]) => string[]
   /** Every statement the code under test has run. */
   log: string[]
+  /** Round trips to the database: a batch is one, however many statements it carries. */
+  trips: { count: number }
 }
 
 export function testDatabase(): TestDatabase {
@@ -24,6 +26,11 @@ export function testDatabase(): TestDatabase {
   db.exec('PRAGMA foreign_keys = ON')
   for (const file of readdirSync(MIGRATIONS).sort()) db.exec(readFileSync(new URL(file, MIGRATIONS), 'utf8'))
   const log: string[] = []
+  const trips = { count: 0 }
+  const trip = <T>(work: () => T): T => {
+    trips.count++
+    return work()
+  }
   const run = (sql: string, args: SQLInputValue[]): Outcome => {
     log.push(sql)
     const stmt = db.prepare(sql)
@@ -37,14 +44,15 @@ export function testDatabase(): TestDatabase {
     sql,
     args,
     bind: (...next: SQLInputValue[]) => statement(sql, next),
-    first: async () => run(sql, args).results[0] ?? null,
-    all: async () => run(sql, args),
-    run: async () => run(sql, args),
+    first: async () => trip(() => run(sql, args).results[0] ?? null),
+    all: async () => trip(() => run(sql, args)),
+    run: async () => trip(() => run(sql, args)),
   })
   return {
     prepare: (sql: string) => statement(sql),
     // A D1 batch is one transaction: all of it happens or none of it does.
     batch: async (statements: { sql: string; args: SQLInputValue[] }[]) => {
+      trips.count++
       db.exec('BEGIN')
       try {
         const out = statements.map((s) => run(s.sql, s.args))
@@ -58,6 +66,7 @@ export function testDatabase(): TestDatabase {
     query: (sql: string, ...args: SQLInputValue[]) => db.prepare(sql).all(...args),
     plan: (sql: string, ...args: SQLInputValue[]) => (db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...args) as { detail: string }[]).map((r) => r.detail),
     log,
+    trips,
   } as unknown as TestDatabase
 }
 

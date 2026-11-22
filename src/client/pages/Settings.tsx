@@ -7,7 +7,7 @@ import { Icon } from '../components/Icon'
 import { Alert, Button, ButtonAnchor, Card, CopyRow, Field, inputClass, linkClass, Modal, PageHeader } from '../components/ui'
 import { useAction } from '../lib/action'
 import { api } from '../lib/api'
-import { useData, useDataset } from '../lib/data'
+import { useData, useDataset, useSavePreferences } from '../lib/data'
 import { plural } from '../lib/format'
 
 /** Save text as a file from the browser. The name carries the date, never the person's name. */
@@ -246,7 +246,7 @@ function LooseFiles() {
 }
 
 function HiddenMarkers({ ids, names, loadNames }: { ids: string[]; names: { id: string; name: string }[] | null; loadNames: () => Promise<unknown> }) {
-  const ds = useDataset()
+  const save = useSavePreferences()
   useEffect(() => {
     if (!names) void loadNames()
   }, [names, loadNames])
@@ -258,14 +258,7 @@ function HiddenMarkers({ ids, names, loadNames }: { ids: string[]; names: { id: 
       {ids.map((id) => (
         <div key={id} className="flex items-center gap-2 py-1 text-[13.5px]">
           <span className="flex-1">{nameOf(id)}</span>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={async () => {
-              await api.put(`/subjects/${ds.subjectId}/preferences`, { hidden_marker_ids: ids.filter((x) => x !== id) })
-              await ds.reload()
-            }}
-          >
+          <Button size="sm" variant="ghost" onClick={() => save({ hidden_marker_ids: ids.filter((x) => x !== id) })}>
             Allow again
           </Button>
         </div>

@@ -6,8 +6,7 @@ import type { MarkerSeries } from '../../shared/types'
 import { Sparkline } from '../charts/Sparkline'
 import { Icon } from '../components/Icon'
 import { Button, cx, Empty, inputClass, linkClass, PageHeader, Segmented } from '../components/ui'
-import { api } from '../lib/api'
-import { useDataset, useParam } from '../lib/data'
+import { useDataset, useParam, useSavePreferences } from '../lib/data'
 import { formatPct, plural } from '../lib/format'
 import { PRESETS } from '../lib/presets'
 import { isOutOfRange, resultStatus, statusTone } from '../../shared/semantics'
@@ -21,7 +20,9 @@ export function OverviewPage() {
   const [query, setQuery] = useParam('q', '')
   const [filter, setFilter] = useParam('filter', 'all')
   const [selected, setSelected] = useState<string[]>([])
-  const starred = new Set(ds.preferences.starred_marker_ids)
+  const savePreferences = useSavePreferences()
+  // One set for as long as the list is the same, so the filtering and grouping below are not redone on every render.
+  const starred = useMemo(() => new Set(ds.preferences.starred_marker_ids), [ds.preferences.starred_marker_ids])
 
   // One time axis for every sparkline, so co-movement lines up vertically.
   const domain = useMemo<[number, number]>(() => {
@@ -55,11 +56,7 @@ export function OverviewPage() {
   }, [visible, starred])
 
   const outNow = ds.markers.filter((m) => statusTone(resultStatus(latestResult(m)))).length
-  const toggleStar = async (id: string) => {
-    const next = starred.has(id) ? [...starred].filter((x) => x !== id) : [...starred, id]
-    await api.put(`/subjects/${ds.subjectId}/preferences`, { starred_marker_ids: next })
-    await ds.reload()
-  }
+  const toggleStar = (id: string) => savePreferences({ starred_marker_ids: starred.has(id) ? [...starred].filter((x) => x !== id) : [...starred, id] })
   const bySlug = new Map(ds.markers.map((m) => [m.slug, m]))
   const presets = PRESETS.map((p) => ({ ...p, ids: p.slugs.map((s) => bySlug.get(s)?.id).filter((x): x is string => Boolean(x)) })).filter((p) => p.ids.length >= 2)
 

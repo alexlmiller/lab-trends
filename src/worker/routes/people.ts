@@ -1,6 +1,6 @@
 // Who is signed in, who may sign in, and the people whose records are kept.
 import { Hono, type MiddlewareHandler } from 'hono'
-import { instanceState } from '../auth'
+import { forgetTrust, instanceState } from '../auth'
 import { modelsFor } from '../extraction'
 import { HttpError, jsonBody, newId, nowIso, settings, text, type AppEnv } from '../lib'
 import { deleteSubject } from '../storage'
@@ -59,12 +59,14 @@ people.post('/instance/people', async (c) => {
   const email = text((await jsonBody(c)).email, 'Email', 254)?.toLowerCase() ?? ''
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Enter an email address')
   await c.env.DB.prepare('INSERT OR IGNORE INTO allowed_users (email, added_at, added_by) VALUES (?, ?, ?)').bind(email, nowIso(), c.get('actor')).run()
+  forgetTrust()
   return c.json({ ok: true }, 201)
 })
 
 people.delete('/instance/people/:email', async (c) => {
   if (!c.get('owner')) throw new HttpError(403, 'Only the owner can change who has access')
   await c.env.DB.prepare('DELETE FROM allowed_users WHERE email = ?').bind(c.req.param('email').toLowerCase()).run()
+  forgetTrust()
   return c.json({ ok: true })
 })
 

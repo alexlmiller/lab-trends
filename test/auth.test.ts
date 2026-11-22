@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { accessIdentity, sameOriginWrites } from '../src/worker/auth'
+import { accessIdentity, forgetTrust, sameOriginWrites } from '../src/worker/auth'
 import { logMessage, type AppEnv } from '../src/worker/lib'
 
 const MINE = 'mine.cloudflareaccess.com'
@@ -73,6 +73,8 @@ beforeAll(async () => {
 
 afterEach(() => {
   fetched = []
+  // Each test has its own database; an isolate's memory of who is trusted must not carry over.
+  forgetTrust()
 })
 
 describe('first sign-in', () => {

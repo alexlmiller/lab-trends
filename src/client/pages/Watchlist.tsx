@@ -1,7 +1,7 @@
 // Followed tests across recent draws. Only out-of-range values carry colour and
 // an arrow, so anomalies stand out; select a cell for the same detail the
 // Latest results page shows.
-import { useState, useSyncExternalStore } from 'react'
+import { useSyncExternalStore } from 'react'
 import { Link } from 'react-router'
 import { formatDate } from '../../shared/dates'
 import { MarkerPicker } from '../components/MarkerPicker'
@@ -9,8 +9,8 @@ import { DrawSwitcher, ResultDetail } from '../components/ReportParts'
 import { SelectField } from '../components/SelectField'
 import { Icon } from '../components/Icon'
 import { Alert, Card, cx, Empty, linkClass, PageHeader, SectionHeader } from '../components/ui'
-import { api } from '../lib/api'
-import { useDataset, useParam, useUpdateParams } from '../lib/data'
+import { useAction } from '../lib/action'
+import { useDataset, useParam, useSavePreferences, useUpdateParams } from '../lib/data'
 import { PRESETS } from '../lib/presets'
 import { resultStatus, statusTone } from '../../shared/semantics'
 import { STATUS_PHRASE } from '../lib/series'
@@ -28,8 +28,8 @@ export function WatchlistPage() {
   const [test] = useParam('test', '')
   const [draw] = useParam('draw', '')
   const update = useUpdateParams()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+  const { busy, error, run } = useAction()
+  const savePreferences = useSavePreferences()
   const narrow = useSyncExternalStore(subscribe, () => narrowScreen.matches)
   const starred = ds.preferences.starred_marker_ids
   const available = ds.markers.filter((m) => m.results.length)
@@ -41,19 +41,7 @@ export function WatchlistPage() {
   const selected = markers.find((m) => m.id === test) ?? markers[0]
   const panel = panels.find((p) => p.id === draw) ?? panels[0]
 
-  async function save(ids: string[]) {
-    if (busy) return
-    setBusy(true)
-    setError('')
-    try {
-      await api.put(`/subjects/${ds.subjectId}/preferences`, { starred_marker_ids: ids })
-      await ds.reload()
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
+  const save = (ids: string[]) => (busy ? undefined : run(() => savePreferences({ starred_marker_ids: ids })))
 
   if (!ds.panels.length)
     return (

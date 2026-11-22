@@ -8,7 +8,7 @@ import type { Dataset, EventKind, EventPeriod, MarkerSeries, PersonalTarget, Res
 import { loadCatalog } from '../catalog'
 import { HttpError, jsonBody, newId, nowIso, number, parseJson, strings, text, type AppEnv } from '../lib'
 import { eventOut, panelOut, RESULT_COLUMNS, RESULT_JSON, resultOut } from '../rows'
-import { deleteFiles, deletePanels, unlinkedFileIds } from '../storage'
+import { deleteFiles, deletePanels, unlinkedFileIds, unlinkedFiles } from '../storage'
 
 export const records = new Hono<AppEnv>()
 
@@ -33,25 +33,30 @@ export async function loadDataset(db: D1Database, sid: string): Promise<Dataset>
     db.prepare('SELECT marker_id, source_name FROM lab_marker_aliases WHERE scope = ?').bind(sid),
     db.prepare('SELECT id, marker_id, target_low, target_high, note FROM personal_targets WHERE subject_id = ?').bind(sid),
     db.prepare(`SELECT ${PANEL_COLUMNS} FROM lab_panels WHERE subject_id = ? AND deleted_at IS NULL ORDER BY draw_date DESC, draw_time DESC, id DESC`).bind(sid),
-    db.prepare('SELECT pf.panel_id, f.id AS file_id, f.filename FROM files f JOIN panel_files pf ON pf.file_id = f.id WHERE f.subject_id = ? ORDER BY f.created_at').bind(sid),
+    db.prepare('SELECT pf.panel_id, f.id AS file_id, f.filename FROM files f JOIN panel_files pf ON pf.file_id = f.id WHERE f.subject_id = ?').bind(sid),
     db.prepare(`SELECT ${EVENT_COLUMNS} FROM timeline_events WHERE subject_id = ? ORDER BY start_date`).bind(sid),
     db.prepare('SELECT starred_marker_ids, hidden_marker_ids FROM preferences WHERE subject_id = ?').bind(sid),
     db.prepare('SELECT id, name, path, created_at FROM saved_views WHERE subject_id = ? ORDER BY created_at').bind(sid),
   ])
   if (!subject.results[0]) throw new HttpError(404, 'Person not found')
 
+  const sourcesOf = new Map<string, { file_id: string; filename: string }[]>()
+  for (const s of sources.results as { panel_id: string; file_id: string; filename: string }[]) {
+    sourcesOf.set(s.panel_id, [...(sourcesOf.get(s.panel_id) ?? []), { file_id: s.file_id, filename: s.filename }])
+  }
+  const draws = (panels.results as Record<string, unknown>[]).map((p) => panelOut(p, sourcesOf.get(String(p.id))))
+  const drawOf = new Map(draws.map((d) => [d.id, d]))
   // Results arrive in draw order; group them by test and count them by draw on the way.
   const byMarker = new Map<string, Result[]>()
-  const counts = new Map<string, { results: number; flagged: number }>()
   for (const row of results.results as Record<string, unknown>[]) {
-    const r = resultOut(row)
+    const draw = drawOf.get(String(row.panel_id))
+    if (!draw) continue
+    const r = resultOut(row, draw)
     const list = byMarker.get(r.marker_id)
     if (list) list.push(r)
     else byMarker.set(r.marker_id, [r])
-    const count = counts.get(r.panel_id) ?? { results: 0, flagged: 0 }
-    count.results++
-    if (r.lab_flag) count.flagged++
-    counts.set(r.panel_id, count)
+    draw.result_count++
+    if (r.lab_flag) draw.flagged_count++
   }
   const catalog = await loadCatalog(db, byMarker.keys())
   const ownAliases = new Map<string, string[]>()
@@ -67,15 +72,11 @@ export async function loadDataset(db: D1Database, sid: string): Promise<Dataset>
     if (!marker) continue
     markers.push({ ...marker, aliases: [...new Set([...(catalog.aliases.get(id) ?? []), ...(ownAliases.get(id) ?? [])])], results: list, target: targetOf.get(id) ?? null })
   }
-  const sourcesOf = new Map<string, { file_id: string; filename: string }[]>()
-  for (const s of sources.results as { panel_id: string; file_id: string; filename: string }[]) {
-    sourcesOf.set(s.panel_id, [...(sourcesOf.get(s.panel_id) ?? []), { file_id: s.file_id, filename: s.filename }])
-  }
   const pref = prefs.results[0] as Record<string, unknown> | undefined
   return {
     subject: subject.results[0] as Dataset['subject'],
     markers,
-    panels: (panels.results as Record<string, unknown>[]).map((p) => panelOut(p, sourcesOf.get(String(p.id)), counts.get(String(p.id)))),
+    panels: draws,
     events: (events.results as Record<string, unknown>[]).map(eventOut),
     preferences: { starred_marker_ids: parseJson(pref?.starred_marker_ids, []), hidden_marker_ids: parseJson(pref?.hidden_marker_ids, []) },
     saved_views: views.results as Dataset['saved_views'],
@@ -187,9 +188,11 @@ records.delete('/subjects/:sid/markers/:mid', async (c) => {
   const mid = c.req.param('mid')
   const db = c.env.DB
   const now = nowIso()
+  // The person's results for this test, found through their draws: (draw, test) is the index results have.
+  const theirs = 'marker_id = ?1 AND panel_id IN (SELECT id FROM lab_panels WHERE subject_id = ?2)'
   const statements = [
-    db.prepare('DELETE FROM result_revisions WHERE result_id IN (SELECT id FROM lab_results WHERE subject_id = ? AND marker_id = ?)').bind(sid, mid),
-    db.prepare('DELETE FROM lab_results WHERE subject_id = ? AND marker_id = ?').bind(sid, mid),
+    db.prepare(`DELETE FROM result_revisions WHERE result_id IN (SELECT id FROM lab_results WHERE ${theirs})`).bind(mid, sid),
+    db.prepare(`DELETE FROM lab_results WHERE ${theirs}`).bind(mid, sid),
     db.prepare('DELETE FROM personal_targets WHERE subject_id = ? AND marker_id = ?').bind(sid, mid),
   ]
   if (c.req.query('hide') !== '0') {
@@ -220,18 +223,20 @@ records.put('/subjects/:sid/targets/:mid', async (c) => {
   const high = number(body.target_high, 'At most')
   if (low == null && high == null) {
     await c.env.DB.prepare('DELETE FROM personal_targets WHERE subject_id = ? AND marker_id = ?').bind(sid, mid).run()
-    return c.json({ ok: true })
+    return c.json({ ok: true, target: null })
   }
   if (low != null && high != null && low > high) throw new HttpError(400, '"At least" must not be above "At most"')
-  if (!(await c.env.DB.prepare('SELECT 1 FROM lab_markers WHERE id = ?').bind(mid).first())) throw new HttpError(404, 'Test not found')
+  if (!(await loadCatalog(c.env.DB, [mid])).markers.has(mid)) throw new HttpError(404, 'Test not found')
   const now = nowIso()
-  await c.env.DB.prepare(
+  const target = await c.env.DB.prepare(
     `INSERT INTO personal_targets (id, subject_id, marker_id, target_low, target_high, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (subject_id, marker_id) DO UPDATE SET target_low = excluded.target_low, target_high = excluded.target_high, note = excluded.note, updated_at = excluded.updated_at`,
+     ON CONFLICT (subject_id, marker_id) DO UPDATE SET target_low = excluded.target_low, target_high = excluded.target_high, note = excluded.note, updated_at = excluded.updated_at
+     RETURNING id, marker_id, target_low, target_high, note`,
   )
     .bind(newId('tg'), sid, mid, low, high, text(body.note, 'Note', 500), now, now)
-    .run()
-  return c.json({ ok: true })
+    .first()
+  // The saved target comes back so the page can show it without fetching everything again.
+  return c.json({ ok: true, target })
 })
 
 const EVENT_KINDS: EventKind[] = ['medication', 'procedure', 'illness', 'lifestyle', 'location', 'other']
@@ -308,11 +313,11 @@ records.post('/subjects/:sid/views', async (c) => {
   const path = text(body.path, 'Path', 2_000)
   // A view is a page of this app: one leading slash, so the link can never point at another site.
   if (!name || !path || !/^\/(?![/\\])/.test(path) || /[\\\u0000-\u001f]/.test(path)) throw new HttpError(400, 'A view needs a name and a page of this app')
-  const id = newId('vw')
+  const view = { id: newId('vw'), name, path, created_at: nowIso() }
   await c.env.DB.prepare('INSERT INTO saved_views (id, subject_id, name, path, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, c.get('sid'), name, path, nowIso(), c.get('actor'))
+    .bind(view.id, c.get('sid'), name, path, view.created_at, c.get('actor'))
     .run()
-  return c.json({ id }, 201)
+  return c.json(view, 201)
 })
 
 records.delete('/subjects/:sid/views/:vid', async (c) => {
@@ -336,14 +341,7 @@ records.put('/subjects/:sid/preferences', async (c) => {
 // ─── Stored files ───────────────────────────────────────────────────────
 
 /** Uploads kept for this person that no draw shows: left by imports saved before every source was linked. */
-records.get('/subjects/:sid/files', async (c) => {
-  const sid = c.get('sid')
-  const ids = await unlinkedFileIds(c.env.DB, sid)
-  if (!ids.length) return c.json([])
-  const rows = await c.env.DB.prepare('SELECT id, filename, byte_size, created_at FROM files WHERE subject_id = ? ORDER BY created_at DESC').bind(sid).all<{ id: string }>()
-  const unlinked = new Set(ids)
-  return c.json(rows.results.filter((f) => unlinked.has(f.id)))
-})
+records.get('/subjects/:sid/files', async (c) => c.json(await unlinkedFiles(c.env.DB, c.get('sid'))))
 
 records.delete('/subjects/:sid/files/:fid', async (c) => {
   const fid = c.req.param('fid')

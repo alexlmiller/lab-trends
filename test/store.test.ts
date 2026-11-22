@@ -101,15 +101,24 @@ describe('importing and saving', () => {
   it('keeps tests apart that differ by # and %, or are written in another script', async () => {
     await s.save('cbc.csv', 'Test,Value,Units,Date\nNeutrophils %,55,%,2025-03-04\nNeutrophils #,3.1,x10E3/uL,2025-03-04\nГлюкоза,5.4,ммоль/л,2025-03-04\nГемоглобин,140,г/л,2025-03-04\n')
     const ds = await s.dataset()
-    expect(ds.markers.map((m) => [m.slug, m.results[0].raw_value]).sort()).toEqual([
-      ['marker', '5.4'],
-      ['marker-2', '140'],
-      ['neutrophils-absolute', '3.1'],
-      ['neutrophils-percent', '55'],
+    expect(ds.markers.map((m) => [m.name, m.results[0].raw_value]).sort()).toEqual([
+      ['Neutrophils %', '55'],
+      ['Neutrophils Abs', '3.1'],
+      ['Гемоглобин', '140'],
+      ['Глюкоза', '5.4'],
     ])
-    // The same names resolve to the same tests next time.
-    await s.save('next.csv', 'Test,Value,Date\nГлюкоза,5.9,2025-06-04\nNeutrophils #,2.8,2025-06-04\n')
-    expect((await s.dataset()).markers.map((m) => [m.slug, m.results.length]).sort()).toEqual([['marker', 2], ['marker-2', 1], ['neutrophils-absolute', 2], ['neutrophils-percent', 1]])
+    // A name with no ASCII letters gets a slug no other name can produce.
+    expect(ds.markers.map((m) => m.slug).filter((slug) => !slug.startsWith('neutrophils-')).every((slug) => /^m-[0-9a-f]{20}$/.test(slug))).toBe(true)
+    // The same names resolve to the same tests next time, and a bare name goes by its units.
+    await s.save('next.csv', 'Test,Value,Units,Date\nГлюкоза,5.9,,2025-06-04\nNeutrophils #,2.8,,2025-06-04\nNeutrophils,3.3,x10E3/uL,2025-09-04\nNeutrophils,61,%,2025-09-04\n')
+    expect((await s.dataset()).markers.map((m) => [m.name, m.results.length]).sort()).toEqual([['Neutrophils %', 2], ['Neutrophils Abs', 3], ['Гемоглобин', 1], ['Глюкоза', 2]])
+  })
+
+  it('does not make the same new test twice when two imports both proposed it', async () => {
+    const [a, b] = [await s.upload('a.csv', 'Test,Value,Date\nBrand New Test,1,2025-03-04\n'), await s.upload('b.csv', 'Test,Value,Date\nBrand New Test,2,2025-04-04\n')]
+    for (const batch of [a, b]) await s.api('POST', `/subjects/${s.sid}/imports/${batch.id}/commit`)
+    expect(s.DB.query("SELECT slug FROM lab_markers WHERE name = 'Brand New Test'").map((m) => m.slug)).toEqual(['brand-new-test'])
+    expect((await s.dataset()).markers.map((m) => [m.name, m.results.length])).toEqual([['Brand New Test', 2]])
   })
 
   it('replaces a saved value only when the row is ticked, and keeps the old one as a revision', async () => {

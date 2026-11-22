@@ -74,8 +74,9 @@ async function writeBatch(db: D1Database, subjectId: string, batchId: string, em
   const summary: CommitSummary = { panels_created: 0, panels_merged: 0, results_created: 0, results_replaced: 0, duplicates_skipped: 0, markers_created: 0, skipped: 0, same_day_conflicts: [] }
 
   // Existing slugs (to keep new custom slugs unique) and markers by id.
-  const slugs = new Set((markerRows.results as { slug: string }[]).map((m) => m.slug))
-  const markerIds = new Set((markerRows.results as { id: string }[]).map((m) => m.id))
+  const idBySlug = new Map((markerRows.results as { id: string; slug: string }[]).map((m) => [m.slug, m.id]))
+  const slugs = new Set(idBySlug.keys())
+  const markerIds = new Set(idBySlug.values())
   const createdByName = new Map<string, string>()
   const subjectAlias = new Map<string, string>()
   const globalAlias = new Map<string, string>()
@@ -106,11 +107,20 @@ async function writeBatch(db: D1Database, subjectId: string, batchId: string, em
     const key = normalizeAlias(spec.name) || spec.name.trim().toLowerCase()
     const already = createdByName.get(key)
     if (already) return already
-    const base = slugify(spec.name) || 'marker'
-    let slug = base
+    // "New" was true when the draft was reviewed. Another import, or an edit to the catalog, may have
+    // created the test since; the database as it is now decides, so the same test is never made twice.
+    const exists = subjectAlias.get(key) ?? globalAlias.get(key) ?? idBySlug.get(slugify(spec.name))
+    if (exists && markerIds.has(exists)) {
+      createdByName.set(key, exists)
+      return exists
+    }
+    const id = newId('mk')
+    // A name with no ASCII letters has no slug of its own; its id stands in, which no name can spell.
+    const base = slugify(spec.name)
+    let slug = base || `m-${id.slice(3)}`
     for (let i = 2; slugs.has(slug); i++) slug = `${base}-${i}`
     slugs.add(slug)
-    const id = newId('mk')
+    idBySlug.set(slug, id)
     markerIds.add(id)
     createdByName.set(key, id)
     statements.push(

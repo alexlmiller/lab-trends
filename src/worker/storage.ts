@@ -27,18 +27,24 @@ export async function deleteFiles(env: Env, fileIds: string[]): Promise<void> {
   }
 }
 
-/** Uploads of one person that no draw links to and no import under review still needs. */
-export async function unlinkedFileIds(db: D1Database, subjectId: string): Promise<string[]> {
+export type StoredFile = { id: string; filename: string; byte_size: number | null; created_at: string }
+
+/** Uploads of one person that no draw links to and no import under review still needs, newest first. */
+export async function unlinkedFiles(db: D1Database, subjectId: string): Promise<StoredFile[]> {
   const rows = await db
     .prepare(
-      `SELECT f.id FROM files f WHERE f.subject_id = ?
+      `SELECT f.id, f.filename, f.byte_size, f.created_at FROM files f WHERE f.subject_id = ?
          AND NOT EXISTS (SELECT 1 FROM panel_files pf WHERE pf.file_id = f.id)
          AND NOT EXISTS (SELECT 1 FROM extraction_candidates x JOIN import_batches b ON b.id = x.batch_id
                          WHERE x.file_id = f.id AND b.status IN ('open', 'committing'))`,
     )
     .bind(subjectId)
-    .all<{ id: string }>()
-  return rows.results.map((r) => r.id)
+    .all<StoredFile>()
+  return rows.results.sort((a, b) => b.created_at.localeCompare(a.created_at))
+}
+
+export async function unlinkedFileIds(db: D1Database, subjectId: string): Promise<string[]> {
+  return (await unlinkedFiles(db, subjectId)).map((f) => f.id)
 }
 
 /** Statements that remove draws with their results, the old copies of those results, and their links to uploads. */
@@ -84,9 +90,11 @@ export async function deleteSubject(env: Env, subjectId: string): Promise<void> 
 
   const db = env.DB
   const mine = (table: string) => db.prepare(`DELETE FROM ${table} WHERE subject_id = ?`).bind(subjectId)
+  const draws = 'SELECT id FROM lab_panels WHERE subject_id = ?'
   await db.batch([
-    db.prepare('DELETE FROM panel_files WHERE panel_id IN (SELECT id FROM lab_panels WHERE subject_id = ?)').bind(subjectId),
-    mine('lab_results'),
+    db.prepare(`DELETE FROM panel_files WHERE panel_id IN (${draws})`).bind(subjectId),
+    // Results are reached through their draws, which is how they are indexed.
+    db.prepare(`DELETE FROM lab_results WHERE panel_id IN (${draws})`).bind(subjectId),
     // Old copies of results are keyed by result alone; with the results gone, theirs go too.
     db.prepare('DELETE FROM result_revisions WHERE result_id NOT IN (SELECT id FROM lab_results)'),
     mine('lab_panels'),
