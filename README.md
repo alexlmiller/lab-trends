@@ -11,14 +11,14 @@ Lab Trends is a record-keeping tool. It is not a medical device and gives no med
 | You need | What for | Cost |
 |---|---|---|
 | A [Cloudflare account](https://dash.cloudflare.com/sign-up) | The app, its database and its files all live in it. | Free |
-| A payment method on that account | R2 and Zero Trust each ask for one before they switch on, on their free plans too. | No charge inside the free allowances |
+| A payment method on that account | R2 asks for one before it switches on, on its free plan too. | No charge inside the free allowances |
 | [R2](https://developers.cloudflare.com/r2/get-started/) switched on | Storing uploaded files. In the dashboard: **Storage & databases > R2 > Overview**, then complete the checkout. Do it before you deploy: Cloudflare refuses to create the bucket until R2 is on. | First 10 GB free |
-| A Zero Trust organization | Sign-in. Cloudflare creates it when you [turn on sign-in](#turn-on-sign-in): pick any team name and the Free plan. | Free |
+| Cloudflare Access | Sign-in. Nothing to set up beforehand: you switch it on in the deploy form, and Cloudflare creates the Zero Trust organization behind it. | Free |
 | A GitHub or GitLab account | The deploy button only. Cloudflare copies this repository into it and deploys from there. | Free |
 | Node.js 22.12 or newer, and git | Deploying from a terminal only. | |
 | The [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) | Importing PDFs and photos only. The model that reads them is [not offered on the free plan](https://developers.cloudflare.com/workers-ai/platform/pricing/). | $5 a month |
 
-Without Workers Paid you can still type results in and import spreadsheets. The free plan limits each request to 10 ms of CPU time, which a large spreadsheet can exceed.
+Without Workers Paid you can still type results in and import spreadsheets; a 540-value spreadsheet imports on the free plan. A PDF or photo import stops with a message saying the plan does not offer the model.
 
 Past the free allowances Cloudflare bills by use: [Workers, D1 and Queues](https://developers.cloudflare.com/workers/platform/pricing/), [R2](https://developers.cloudflare.com/r2/pricing/), [Workers AI](https://developers.cloudflare.com/workers-ai/platform/pricing/). Workers AI includes 10,000 Neurons a day on both plans and bills beyond that on Workers Paid.
 
@@ -28,10 +28,16 @@ AI Gateway is not needed. Cloudflare also accepts prepaid [AI Gateway credits](h
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/alexlmiller/lab-trends)
 
-1. Select the button above, sign in to Cloudflare and connect GitHub or GitLab. Tick **Create private Git repository**, keep the suggested names and deploy.
-2. Open the address Cloudflare shows for the Worker (`https://lab-trends.<your-subdomain>.workers.dev`). It says **Turn on sign-in** and lists the steps in [Turn on sign-in](#turn-on-sign-in).
-3. Reload and sign in. The first person to sign in becomes the owner, so do this straight away.
+1. Select the button above, sign in to Cloudflare and connect GitHub or GitLab.
+2. On the setup form, tick **Create private Git repository**. Switch on **Protect with Cloudflare Access**, set its scope to **All traffic** and its policy to **Cloudflare account** (the members of your Cloudflare account: only you, unless you have invited others). Keep the suggested names and deploy.
+3. Open the Worker's address (`https://lab-trends.<your-subdomain>.workers.dev`) and sign in with your Cloudflare account. The first person to sign in becomes the owner, so do this straight away. On a new account the address can take a few minutes to start answering.
 4. Add a person, then go to **Import results**. Where to get files from each lab or patient portal: [`docs/importing.md`](docs/importing.md), also shown on that page.
+
+If you left the Access switch off, the app shows **Turn on sign-in** and nothing else until you follow [Turn on sign-in](#turn-on-sign-in).
+
+### From your own copy
+
+To deploy a copy or fork that is already on your GitHub: in the Cloudflare dashboard, **Workers & Pages > Create application > Continue with GitHub**, and pick the repository. On the setup form use `lab-trends` (the `name` in `wrangler.jsonc`) as the project name, change the **Deploy command** to `npm run deploy` (the default skips database migrations), and switch on Access as in step 2.
 
 ### From a terminal instead
 
@@ -40,24 +46,24 @@ git clone https://github.com/alexlmiller/lab-trends.git
 cd lab-trends
 npm install
 npx wrangler login
-npm run deploy:first
+npm run deploy
 ```
 
-`deploy:first` builds, deploys (Wrangler creates the database, bucket and queue), then applies the database migrations. On a new account Wrangler also registers a `workers.dev` address, which can take a few minutes to start answering. Then follow steps 2 to 4 above.
+`npm run deploy` builds, applies database migrations and deploys. On a first deploy Wrangler creates the database, bucket and queue, and on a new account registers a `workers.dev` address. Then [turn on sign-in](#turn-on-sign-in) and follow steps 3 and 4 above.
 
 ### If you already use Cloudflare
 
 The same steps work. Things that differ:
 
 - Several accounts: the deploy page asks which one. For Wrangler, set `CLOUDFLARE_ACCOUNT_ID`.
-- Zero Trust already set up: step 2 skips the team name and payment questions.
+- Cloudflare's GitHub app already installed for another of your Cloudflare accounts: the deploy button's form may offer only **New GitHub connection**, and GitHub then has nothing new to install. Use [From your own copy](#from-your-own-copy) instead, which lists your repositories.
 - Your own domain: add it under the Worker's **Settings > Domains & Routes**. Access on the Worker covers every address the Worker has. Do not add `routes` to `wrangler.jsonc`; domains added in the dashboard survive deploys.
 - An Access application already in front of the address (by hostname, or "protect all Workers"): no extra step. The app locks to whichever Access application handles the first sign-in. To choose one explicitly, see [Settings](#settings).
 - A database, bucket or queue already named `lab-trends`, `lab-trends-files` or `lab-trends-extractions`: Wrangler reuses it. Rename it on the deploy page or in `wrangler.jsonc` if that is not what you want.
 
 ## Turn on sign-in
 
-Sign-in is [Cloudflare Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/). Until it is on, the app shows only a setup page and the API refuses every request.
+Sign-in is [Cloudflare Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/). Until it is on, the app shows only a setup page and the API refuses every request. The deploy form's **Protect with Cloudflare Access** switch turns it on for you. If you left that off, or deployed from a terminal:
 
 1. In the Cloudflare dashboard, open **Workers & Pages** and select the Worker.
 2. Open its **Access** tab and choose **Protect this Worker behind Access**. If asked to set up Zero Trust first, pick any team name and the Free plan. It asks for a payment method and does not charge for this.

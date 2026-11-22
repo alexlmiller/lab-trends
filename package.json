@@ -16,8 +16,7 @@
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "db:seed:local": "wrangler d1 execute DB --local --file scripts/fixtures/demo.sql",
-    "deploy": "npm run build && npm run db:migrate:remote && wrangler deploy",
-    "deploy:first": "npm run build && wrangler deploy && npm run db:migrate:remote"
+    "deploy": "npm run build && node scripts/deploy.mjs"
   },
   "cloudflare": {
     "bindings": {
