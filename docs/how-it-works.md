@@ -27,6 +27,7 @@ When a release changes how results are read, saved rows are brought up to date o
 - A request without a valid token is refused, and so is a write the browser reports as coming from another site.
 - Only `/api/health` is public.
 - `DEV_AUTH_EMAIL` signs every request in as that address, on `localhost` only.
+- `DEMO_MODE=read-only` (exactly that value) is for a public demo: no Access, every GET is answered as a demo visitor, and every other method, including all of `/mcp`, is refused with `demo_read_only`. It refuses to serve at all (`demo_unsafe`) while the database holds anyone whose id doesn't start with `demo`, so setting it on a real deployment exposes nothing. The records come from `scripts/demo-data.mjs`.
 
 ## Importing
 

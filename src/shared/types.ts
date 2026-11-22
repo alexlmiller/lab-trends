@@ -205,6 +205,8 @@ export type Me = {
   extraction_models?: { pdf: string; photo: string }
   /** Model requests pass through an AI Gateway, which can log or cache them. */
   ai_gateway?: boolean
+  /** A public read-only demo (DEMO_MODE=read-only). */
+  demo?: boolean
 }
 
 /** Who may use this deployment, and the Cloudflare Access application it trusts. */

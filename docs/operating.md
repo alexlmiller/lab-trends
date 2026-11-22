@@ -13,6 +13,7 @@ All optional. Set them as variables or secrets on the Worker (**Settings > Varia
 | `EXTRACTION_MODEL` | Model that reads PDF text. Default [`@cf/google/gemma-4-26b-a4b-it`](https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/). |
 | `VISION_MODEL` | Model that reads photos. Defaults to `EXTRACTION_MODEL`. |
 | `AI_GATEWAY_ID` | Send model calls through a named [AI Gateway](https://developers.cloudflare.com/ai-gateway/). Depending on its settings, a gateway logs or caches what passes through, which here is report text and photos. The Import page says when one is set. |
+| `DEMO_MODE` | `read-only` turns a deployment into a public demo: no sign-in, nothing can be changed, sample records only. Never set it on a copy with your own records; the app refuses to show anything if you do. |
 
 The default model is offered on the Workers Free plan. Some Workers AI models aren't: with one of those set on a free account, a PDF or photo import stops with a message saying so. A model id that doesn't start with `@cf/` isn't run by Cloudflare: report text and photos go to that provider, and the Import page says so.
 
