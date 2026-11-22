@@ -28,7 +28,7 @@ export function MarkersAdminPage() {
     return cats.map((c) => ({ c, markers: list.filter((m) => m.category === c).sort((a, b) => a.name.localeCompare(b.name)) }))
   }, [catalog, ds.markersById, showAll])
 
-  if (!catalog) return <Spinner label="Loading markers…" />
+  if (!catalog) return <Spinner label="Loading tests…" />
   const refresh = async () => {
     await Promise.all([loadCatalog(), ds.reload()])
   }
@@ -120,7 +120,7 @@ function EditMarker({ marker, onClose, onSaved }: { marker: Marker; onClose: () 
       }
     >
       <div className="grid gap-3">
-        {!marker.is_custom ? <Alert tone="info">This is a shared catalog marker; changes apply for everyone using this app.</Alert> : null}
+        {!marker.is_custom ? <Alert tone="info">This is a built-in test; changes apply for everyone using this app.</Alert> : null}
         <Field label="Short name">
           <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
@@ -171,7 +171,7 @@ function MergeMarker({ marker, catalog, onClose, onSaved }: { marker: Marker; ca
     >
       <div className="grid gap-3">
         <p className="m-0 text-[13.5px] text-ink-dim">
-          All results for <b className="text-ink">{marker.name}</b> move to the marker you pick, and its name becomes an alias so future imports land there too. Units are not converted.
+          All results for <b className="text-ink">{marker.name}</b> move to the test you pick, and its name becomes an alias so future imports land there too. Units are not converted.
         </p>
         {target ? (
           <div className="flex items-center gap-2 rounded-md border border-line bg-sunken px-3 py-2 text-[13px]">

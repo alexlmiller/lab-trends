@@ -16,7 +16,7 @@ export type PickerOption = {
 export function MarkerPicker({
   options,
   onPick,
-  placeholder = 'Add a marker…',
+  placeholder = 'Add a test…',
   suggestions,
   autoFocus,
   allowCreate,
@@ -60,7 +60,7 @@ export function MarkerPicker({
         .join(' · '),
     }))
     if (allowCreate && query.trim() && !matches.some((o) => normalizeAlias(o.name) === q)) {
-      choices.push({ value: 'create:' + query.trim(), label: 'Create marker “' + query.trim() + '”', detail: '' })
+      choices.push({ value: 'create:' + query.trim(), label: 'Create test “' + query.trim() + '”', detail: '' })
     }
     return choices
   }

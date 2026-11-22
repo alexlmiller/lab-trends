@@ -141,9 +141,9 @@ export function SettingsPage() {
             </span>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span>Markers, names and duplicates</span>
+            <span>Tests, names and duplicates</span>
             <Button size="sm" onClick={() => navigate('/catalog')}>
-              Manage markers
+              Manage tests
             </Button>
           </div>
           <div className="flex items-center justify-between gap-2">
@@ -253,7 +253,7 @@ function HiddenMarkers({ ids, names, loadNames }: { ids: string[]; names: { id: 
   const nameOf = (id: string) => names?.find((m) => m.id === id)?.name ?? id
   return (
     <Card>
-      <h2 className="m-0 mb-1 text-[15px] font-semibold">Removed markers</h2>
+      <h2 className="m-0 mb-1 text-[15px] font-semibold">Removed tests</h2>
       <p className="m-0 mb-2 text-[12.5px] text-ink-dim">Rows for these arrive unticked when you import. Allow one again to have it imported normally.</p>
       {ids.map((id) => (
         <div key={id} className="flex items-center gap-2 py-1 text-[13.5px]">

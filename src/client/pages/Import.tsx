@@ -105,7 +105,7 @@ export function ImportPage() {
       {error ? <Alert tone="error">{error}</Alert> : null}
       <Alert tone="info">
         {documentImports
-          ? `Spreadsheets are parsed inside the app. A PDF is turned into text, and names, dates of birth, record numbers, addresses, phone numbers and email addresses are removed where the report labels them, before an AI model ${outside.length ? 'outside Cloudflare' : 'on Cloudflare Workers AI'} reads it. A name or number printed without a label can still reach the model. Photos are sent to the model as they are, with nothing removed. A file’s name is never sent. Results are matched to known markers; you can remap any row before committing.`
+          ? `Spreadsheets are parsed inside the app. A PDF is turned into text, and names, dates of birth, record numbers, addresses, phone numbers and email addresses are removed where the report labels them, before an AI model ${outside.length ? 'outside Cloudflare' : 'on Cloudflare Workers AI'} reads it. A name or number printed without a label can still reach the model. Photos are sent to the model as they are, with nothing removed. A file’s name is never sent. Results are matched to known tests; you can remap any row before committing.`
           : 'This deployment has no extraction queue, so it imports spreadsheets only.'}
       </Alert>
       {documentImports && me?.ai_gateway ? (
@@ -326,7 +326,7 @@ export function ImportReviewPage() {
             <ul className="m-0 grid gap-1 pl-5 text-[14px]">
               <li>{plural(s.results_created, 'new result')}{s.results_replaced ? `, ${plural(s.results_replaced, 'replaced value')}` : ''}</li>
               <li>{plural(s.panels_created, 'new draw')}{s.panels_merged ? `, added to ${plural(s.panels_merged, 'existing draw')}` : ''}</li>
-              {s.markers_created ? <li>{plural(s.markers_created, 'new marker')} created</li> : null}
+              {s.markers_created ? <li>{plural(s.markers_created, 'new test')} created</li> : null}
               {s.duplicates_skipped ? <li>{plural(s.duplicates_skipped, 'duplicate')} skipped (already saved with the same value)</li> : null}
               {s.skipped ? <li>{plural(s.skipped, 'row')} left out</li> : null}
             </ul>
@@ -392,7 +392,7 @@ export function ImportReviewPage() {
             variant="primary"
             busy={act.busy}
             disabled={pending || (!includedCount && !tagUpdates) || missingDates || unmapped}
-            title={missingDates ? 'Set a collection date for every draw' : unmapped ? 'Map every row to a marker' : undefined}
+            title={missingDates ? 'Set a collection date for every draw' : unmapped ? 'Map every row to a test' : undefined}
             onClick={() =>
               act.run(async () => {
                 await saveAll()
@@ -648,7 +648,7 @@ function PanelEditor({
                 />
               </th>
               <th className="px-2 py-2">As reported</th>
-              <th className="px-2 py-2">Marker</th>
+              <th className="px-2 py-2">Test</th>
               <th className="px-2 py-2">Value</th>
               <th className="px-2 py-2">Units</th>
               <th className="px-2 py-2">Reference</th>
@@ -742,7 +742,7 @@ function ReviewRow({
             <button type="button" onClick={() => setPicking(true)} className="text-left text-[13px]">
               <span className="rounded bg-warn-tint px-1 text-[11px] font-semibold text-warn uppercase">new</span> <b>{r.new_marker?.name ?? r.raw_name}</b>
             </button>
-            <SelectField hideLabel size="sm" label="Category for new marker" value={r.new_marker?.category ?? 'uncategorized'}
+            <SelectField hideLabel size="sm" label="Category for new test" value={r.new_marker?.category ?? 'uncategorized'}
               options={CATEGORIES.map(c => ({ value: c.slug, label: c.label, keywords: c.aliases.join(' ') }))}
               onChange={category => onChange(x => void (x.new_marker = { name: x.new_marker?.name ?? x.raw_name, default_units: x.raw_units ?? null, category }))} />
           </div>
@@ -755,7 +755,7 @@ function ReviewRow({
           </button>
         ) : (
           <Button size="sm" onClick={() => setPicking(true)}>
-            Choose marker
+            Choose test
           </Button>
         )}
         {picking ? (

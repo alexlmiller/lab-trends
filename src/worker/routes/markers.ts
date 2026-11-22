@@ -31,7 +31,7 @@ markers.patch('/markers/:id', async (c) => {
   const id = c.req.param('id')
   const body = await jsonBody(c)
   const existing = await c.env.DB.prepare(`SELECT ${MARKER_COLUMNS} FROM lab_markers WHERE id = ?`).bind(id).first<Record<string, unknown>>()
-  if (!existing) throw new HttpError(404, 'Marker not found')
+  if (!existing) throw new HttpError(404, 'Test not found')
   const given = (key: string, field: string, max: number) => (key in body ? text(body[key], field, max) : (existing[key] as string | null))
   const category = text(body.category, 'Category', 60)
   const saved = await c.env.DB.prepare(
@@ -54,17 +54,17 @@ markers.patch('/markers/:id', async (c) => {
 /** Merge `id` into `into_id`: results and aliases move; conflicts on the same draw are reported, not dropped. */
 markers.post('/markers/:id/merge', async (c) => {
   const id = c.req.param('id')
-  const into = text((await jsonBody(c)).into_id, 'Marker', 60)
-  if (!into || into === id) throw new HttpError(400, 'Choose a different marker to merge into')
+  const into = text((await jsonBody(c)).into_id, 'Test', 60)
+  if (!into || into === id) throw new HttpError(400, 'Choose a different test to merge into')
   const db = c.env.DB
   const [found, conflicts] = await db.batch([
     db.prepare('SELECT id, name FROM lab_markers WHERE id IN (?, ?)').bind(id, into),
     db.prepare('SELECT COUNT(*) AS n FROM lab_results a JOIN lab_results b ON a.panel_id = b.panel_id AND b.marker_id = ? WHERE a.marker_id = ?').bind(into, id),
   ])
   const from = (found.results as { id: string; name: string }[]).find((m) => m.id === id)
-  if (!from || found.results.length !== 2) throw new HttpError(404, 'Marker not found')
+  if (!from || found.results.length !== 2) throw new HttpError(404, 'Test not found')
   const clashes = Number((conflicts.results[0] as { n: number }).n)
-  if (clashes) throw new HttpError(409, `${clashes} draw(s) have both markers. Delete or correct those results first.`)
+  if (clashes) throw new HttpError(409, `${clashes} draw(s) have both tests. Delete or correct those results first.`)
   const now = nowIso()
   const key = normalizeAlias(from.name)
   const moved = await db.batch([

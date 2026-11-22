@@ -1,12 +1,15 @@
 // The API end to end against a real SQLite database with the real migrations:
 // importing, saving, the dataset the charts read, deleting, and bringing rows
 // stored under older rules up to date.
+import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { normalizeAlias } from '../src/shared/markers'
 import type { CommitSummary, Dataset, ImportBatch } from '../src/shared/types'
-import { forgetCatalog } from '../src/worker/catalog'
+import { forgetCatalog, loadCatalog } from '../src/worker/catalog'
 import worker from '../src/worker/index'
+import { markerIndex } from '../src/worker/resolve'
 import { DATA_VERSION, forgetUpgrade, upgradeData } from '../src/worker/upgrade'
-import { testEnv } from './helpers'
+import { testDatabase, testEnv } from './helpers'
 
 const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext
 
@@ -106,8 +109,8 @@ describe('importing and saving', () => {
     await s.save('cbc.csv', 'Test,Value,Units,Date\nNeutrophils %,55,%,2025-03-04\nNeutrophils #,3.1,x10E3/uL,2025-03-04\nГлюкоза,5.4,ммоль/л,2025-03-04\nГемоглобин,140,г/л,2025-03-04\n')
     const ds = await s.dataset()
     expect(ds.markers.map((m) => [m.name, m.results[0].raw_value]).sort()).toEqual([
-      ['Neutrophils %', '55'],
-      ['Neutrophils Abs', '3.1'],
+      ['Neutrophil %', '55'],
+      ['Neutrophil count', '3.1'],
       ['Гемоглобин', '140'],
       ['Глюкоза', '5.4'],
     ])
@@ -115,7 +118,7 @@ describe('importing and saving', () => {
     expect(ds.markers.map((m) => m.slug).filter((slug) => !slug.startsWith('neutrophils-')).every((slug) => /^m-[0-9a-f]{20}$/.test(slug))).toBe(true)
     // The same names resolve to the same tests next time, and a bare name goes by its units.
     await s.save('next.csv', 'Test,Value,Units,Date\nГлюкоза,5.9,,2025-06-04\nNeutrophils #,2.8,,2025-06-04\nNeutrophils,3.3,x10E3/uL,2025-09-04\nNeutrophils,61,%,2025-09-04\n')
-    expect((await s.dataset()).markers.map((m) => [m.name, m.results.length]).sort()).toEqual([['Neutrophils %', 2], ['Neutrophils Abs', 3], ['Гемоглобин', 1], ['Глюкоза', 2]])
+    expect((await s.dataset()).markers.map((m) => [m.name, m.results.length]).sort()).toEqual([['Neutrophil %', 2], ['Neutrophil count', 3], ['Гемоглобин', 1], ['Глюкоза', 2]])
   })
 
   it('does not make the same new test twice when two imports both proposed it', async () => {
@@ -337,5 +340,30 @@ describe('rows stored under older rules', () => {
     expect(sql('SELECT id FROM import_batches').map((b) => b.id)).toEqual(['ib_done'])
     expect([...s.FILES.objects.keys()]).toEqual([`${s.sid}/fl_second/report.pdf`])
     expect(sql("SELECT normalized_name FROM lab_marker_aliases WHERE source_name = 'Example Count #' ORDER BY normalized_name").map((a) => a.normalized_name)).toEqual(['example count', 'example count absolute'])
+  })
+})
+
+describe('built-in test names', () => {
+  it('still match every name they had before 0009 renamed them, and no two tests answer to one name', async () => {
+    forgetCatalog()
+    const catalog = await loadCatalog(testDatabase())
+    const index = markerIndex(catalog, new Map())
+    // The names each test had before: the migration only renames a test whose name is still the one it lists.
+    const sql = readFileSync(new URL('../migrations/0009_builtin_tests.sql', import.meta.url), 'utf8')
+    const before = [...sql.matchAll(/WHERE id = '(mk_\w+)' AND (?:name|long_name) = '((?:[^']|'')+)'/g)].map((m) => [m[1], m[2].replace(/''/g, "'")])
+    expect(before.length).toBeGreaterThan(40)
+    for (const [id, name] of before) expect([name, index.lookup(name, null)?.id]).toEqual([name, id])
+
+    const owner = new Map<string, string>()
+    for (const marker of catalog.markers.values()) {
+      for (const name of [marker.name, marker.long_name]) {
+        if (!name) continue
+        expect([name, index.lookup(name, null)?.id]).toEqual([name, marker.id])
+        const key = normalizeAlias(name)
+        expect([name, owner.get(key) ?? marker.id]).toEqual([name, marker.id])
+        owner.set(key, marker.id)
+      }
+    }
+    forgetCatalog()
   })
 })
