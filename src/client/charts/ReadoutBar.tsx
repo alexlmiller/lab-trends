@@ -4,8 +4,8 @@ import { formatDate } from '../../shared/dates'
 import { activeOn } from '../../shared/events'
 import type { MarkerSeries, Panel, TimelineEvent } from '../../shared/types'
 import { Button, ButtonLink, cx } from '../components/ui'
-import { relativeToReference } from '../lib/report'
-import { seriesColor } from '../lib/series'
+import { resultStatus, statusTone } from '../../shared/semantics'
+import { seriesColor, STATUS_PHRASE } from '../lib/series'
 import { drawPath } from '../lib/history'
 
 type Props = {
@@ -37,7 +37,8 @@ export function ReadoutBar({ markers, panel, latest, events, older, newer }: Pro
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-6 gap-y-1 max-sm:order-last max-sm:w-full max-sm:gap-x-4 max-sm:pl-1">
       {markers.map((m, index) => {
         const r = m.results.find((x) => x.panel_id === panel.id)
-        const d = r ? relativeToReference(r) : undefined
+        const status = resultStatus(r)
+        const d = statusTone(status)
         return (
           <div key={m.id} className="flex min-w-0 items-baseline gap-1.5">
             <span aria-hidden className="inline-block size-2.5 shrink-0 translate-y-[-1px] rounded-full" style={{ background: seriesColor(index) }} />
@@ -46,7 +47,7 @@ export function ReadoutBar({ markers, panel, latest, events, older, newer }: Pro
               <>
                 <span className={cx('text-[16px] leading-none font-semibold tabular', d === 'high' && 'text-high', d === 'low' && 'text-low')}>{r.raw_value}</span>
                 <span className="text-[12px] text-ink-faint">{r.raw_units}</span>
-                {d === 'high' || d === 'low' ? <span className={cx('text-[11.5px] font-medium', d === 'high' ? 'text-high' : 'text-low')}>{d === 'high' ? 'above range' : 'below range'}</span> : null}
+                {d ? <span className={cx('text-[11.5px] font-medium', d === 'high' ? 'text-high' : 'text-low')}>{STATUS_PHRASE[status]}</span> : null}
               </>
             ) : (
               <span className="text-[13px] text-ink-faint">not tested</span>

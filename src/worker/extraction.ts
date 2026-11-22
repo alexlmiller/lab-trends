@@ -5,12 +5,12 @@ import { normalizeCategory } from '../shared/categories'
 import { parseLooseDate } from '../shared/dates'
 import { extractTextItems } from 'unpdf'
 import { layoutPage } from '../shared/pdfLayout'
-import { normalizeFlag, normalizeReferenceText } from '../shared/semantics'
+import { DECIMAL_COMMA_NOTE, normalizeFlag, normalizeReferenceText, usesDecimalComma } from '../shared/semantics'
 import { parseCsv, sheetsToDocument } from '../shared/tabular'
 import type { ExtractedPanel, ExtractionDocument, SourceKind } from '../shared/types'
 import { readXlsx } from '../shared/xlsx'
 import { chunkPages, denseLength, mapLimit, mergePanels, splitText, type Chunk } from './chunking'
-import { isTransient, logMessage, settings } from './lib'
+import { isAccountRefusal, isTransient, logMessage, settings } from './lib'
 import { redact } from './redact'
 
 export const PROMPT_VERSION = 'lab_extraction.v2'
@@ -21,10 +21,10 @@ export type ExtractionOutput = {
   privacyMode: 'local' | 'cloudflare_ai' | 'cloudflare_ai_redacted' | 'third_party_redacted' | 'third_party'
 }
 
-export function extractTabular(bytes: ArrayBuffer, kind: 'csv' | 'xlsx', filename: string): ExtractionOutput {
+export async function extractTabular(bytes: ArrayBuffer, kind: 'csv' | 'xlsx', filename: string): Promise<ExtractionOutput> {
   const sheets =
     kind === 'xlsx'
-      ? readXlsx(new Uint8Array(bytes))
+      ? await readXlsx(new Uint8Array(bytes))
       : [{ name: filename.replace(/\.[^.]+$/, ''), rows: parseCsv(new TextDecoder().decode(bytes)) }]
   return { document: sheetsToDocument(sheets, kind), model: null, privacyMode: 'local' }
 }
@@ -90,8 +90,15 @@ const RULES = [
 
 /** Chunks read at once; more only trips Workers AI rate limits. */
 const PARALLEL_CHUNKS = 4
-/** About 100 pages: what fits in the queue consumer's 15-minute run. */
+/** About 100 pages. Each part is a model call, so this also caps what one file can cost. */
 const MAX_CHUNKS = 40
+/**
+ * A queue consumer is stopped after 15 minutes, and a read that is stopped starts again
+ * from nothing. So no new part of a report is started after `startMs`, and a part still
+ * being read at `waitMs` is given up. A slow model then ends a long report early, with a
+ * warning naming the pages, and what it did read is kept.
+ */
+const READ_BUDGET = { startMs: 9 * 60_000, waitMs: 13 * 60_000 }
 /** A chunk whose reply is cut off is split again, at most this many times. */
 const MAX_SPLITS = 3
 
@@ -105,27 +112,22 @@ class Overflow extends Error {
   }
 }
 
-export async function extractWithModel(
-  env: Env,
-  kind: Extract<SourceKind, 'pdf' | 'image'>,
-  bytes: ArrayBuffer,
-  filename: string,
-  mime: string,
-): Promise<ExtractionOutput> {
+/** The file's name never goes to the model: people name reports after the patient. */
+export async function extractWithModel(env: Env, kind: Extract<SourceKind, 'pdf' | 'image'>, bytes: ArrayBuffer, mime: string): Promise<ExtractionOutput> {
   const models = modelsFor(env)
   const model = kind === 'image' ? models.photo : models.pdf
   const firstParty = isCloudflareModel(model)
   if (kind === 'image') {
     const read = await readOnce(env, model, [
-      { type: 'text', text: `${preamble(filename)}\n\nExtract the lab results shown in this image.` },
+      { type: 'text', text: `${PREAMBLE}\n\nExtract the lab results shown in this image.` },
       { type: 'image_url', image_url: { url: `data:${mime || 'image/png'};base64,${toBase64(bytes)}` } },
     ])
     return { document: finishDocument(kind, read.panels, read.warnings), model, privacyMode: firstParty ? 'cloudflare_ai' : 'third_party' }
   }
 
-  const pages = (await pdfPages(env, bytes, filename)).map((page) => redact(page).text)
+  const pages = (await pdfPages(env, bytes)).map(redact)
   if (denseLength(pages.join(' ')) < 40) throw new Error('This PDF has no text layer (it may be a scan). Upload a photo or screenshot of the report instead.')
-  const read = await readPages(env, model, filename, pages)
+  const read = await readPages(env, model, pages)
   return {
     document: finishDocument(kind, read.panels, read.warnings),
     model,
@@ -134,7 +136,7 @@ export async function extractWithModel(
 }
 
 /** Read page texts in chunks, a few at a time; a chunk that fails outright becomes a warning. */
-export async function readPages(env: Env, model: string, filename: string, pages: string[]): Promise<Read> {
+export async function readPages(env: Env, model: string, pages: string[], budget = READ_BUDGET): Promise<Read> {
   const all = chunkPages(pages)
   const chunks = all.slice(0, MAX_CHUNKS)
   const warnings: string[] = []
@@ -144,31 +146,59 @@ export async function readPages(env: Env, model: string, filename: string, pages
   // Later chunks see the top of page 1 for the collection date and facility, which many reports print only once.
   const header = chunks.length > 1 ? headerOf(pages.find((p) => p.trim()) ?? '') : ''
   const failures: unknown[] = []
-  const reads = await mapLimit(chunks, PARALLEL_CHUNKS, async (chunk, i) => {
+  const unread: Chunk[] = []
+  const began = Date.now()
+  const reads = await mapLimit(chunks, PARALLEL_CHUNKS, async (chunk, i): Promise<Read> => {
+    if (i > 0 && Date.now() - began > budget.startMs) {
+      unread.push(chunk)
+      return { panels: [], warnings: [] }
+    }
     try {
-      return await readText(env, model, filename, chunk, pages.length, { header: i > 0 ? header : '', partial: chunks.length > 1 }, 0)
+      const read = await within(readText(env, model, chunk, pages.length, { header: i > 0 ? header : '', partial: chunks.length > 1 }, 0), began + budget.waitMs - Date.now())
+      if (read) return read
+      unread.push(chunk)
+      return { panels: [], warnings: [] }
     } catch (err) {
-      // Retry the whole file for capacity errors; otherwise keep what the other chunks found.
-      if (chunks.length === 1 || isTransient(err)) throw err
+      // Retry the whole file for capacity errors, and stop it when the account cannot run the model at all:
+      // half a report read before the day's allowance ran out must not pass for the whole report.
+      // Otherwise keep what the other chunks found.
+      if (chunks.length === 1 || isTransient(err) || isAccountRefusal(err)) throw err
       console.error('extraction chunk failed', chunk.pages.join('-'), logMessage(err))
       failures.push(err)
       return { panels: [], warnings: [`${pageLabel(chunk.pages)} could not be read, so results there are missing. Check them against the report.`] }
     }
   })
   if (failures.length === chunks.length) throw failures[0]
+  if (unread.length + failures.length === chunks.length) throw new Error('The model took too long to read this file. Choose Try again, or upload fewer pages at a time.')
+  if (unread.length) {
+    warnings.push(`This PDF took too long to read in one go. Not read: ${pageRanges(unread)}. Upload them as a separate PDF.`)
+  }
   return { panels: reads.flatMap((r) => r.panels), warnings: [...warnings, ...reads.flatMap((r) => r.warnings)] }
 }
 
-async function readText(
-  env: Env,
-  model: string,
-  filename: string,
-  chunk: Chunk,
-  totalPages: number,
-  context: { header: string; partial: boolean },
-  depth: number,
-): Promise<Read> {
-  const lines = [preamble(filename)]
+/** The promise's value, or null when it takes longer than `ms`. */
+function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), Math.max(0, ms))
+  })
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer))
+}
+
+/** "pages 61–99", or "pages 13–18, 40–99" when the parts are not next to each other. */
+function pageRanges(chunks: Chunk[]): string {
+  const ranges: [number, number][] = []
+  for (const [from, to] of chunks.map((c) => c.pages).sort((a, b) => a[0] - b[0])) {
+    const last = ranges.at(-1)
+    if (last && from <= last[1] + 1) last[1] = Math.max(last[1], to)
+    else ranges.push([from, to])
+  }
+  const only = ranges.length === 1 && ranges[0][0] === ranges[0][1]
+  return `${only ? 'page' : 'pages'} ${ranges.map(([a, b]) => (a === b ? `${a}` : `${a}–${b}`)).join(', ')}`
+}
+
+async function readText(env: Env, model: string, chunk: Chunk, totalPages: number, context: { header: string; partial: boolean }, depth: number): Promise<Read> {
+  const lines = [PREAMBLE]
   if (context.header) {
     lines.push(
       '',
@@ -185,7 +215,7 @@ async function readText(
     const pieces = splitText(chunk.text, Math.ceil(denseLength(chunk.text) / 2))
     if (pieces.length < 2) throw err
     const parts = await Promise.all(
-      pieces.map((text, i) => readText(env, model, filename, { text, pages: chunk.pages }, totalPages, { header: i > 0 ? context.header || headerOf(chunk.text) : context.header, partial: true }, depth + 1)),
+      pieces.map((text, i) => readText(env, model, { text, pages: chunk.pages }, totalPages, { header: i > 0 ? context.header || headerOf(chunk.text) : context.header, partial: true }, depth + 1)),
     )
     return { panels: parts.flatMap((p) => p.panels), warnings: parts.flatMap((p) => p.warnings) }
   }
@@ -216,12 +246,13 @@ async function readOnce(env: Env, model: string, user: unknown[]): Promise<Read>
   return readPanels(parsed)
 }
 
-const preamble = (filename: string) => `Prompt version: ${PROMPT_VERSION}\nSource file: ${filename}\n\nExtraction rules:\n${RULES}`
+const PREAMBLE = `Prompt version: ${PROMPT_VERSION}\n\nExtraction rules:\n${RULES}`
 const fence = (text: string) => '```\n' + text + '\n```'
 const headerOf = (text: string) => text.split('\n').slice(0, 40).join('\n').slice(0, 2_000)
 const pageLabel = ([a, b]: [number, number]) => (a === b ? `Page ${a}` : `Pages ${a}–${b}`)
 
-export const DEFAULT_MODEL = '@cf/deepseek-ai/deepseek-v4.1-flash-1017'
+/** Offered on the Workers Free plan, and reads photos as well as text. */
+export const DEFAULT_MODEL = '@cf/google/gemma-4-26b-a4b-it'
 
 /** The model that reads each kind of upload: the EXTRACTION_MODEL / VISION_MODEL settings, or the default. */
 export function modelsFor(env: Env): { pdf: string; photo: string } {
@@ -254,7 +285,11 @@ async function runModel(env: Env, model: string, messages: Messages): Promise<un
     response_format: { type: 'json_schema', json_schema: { name: 'lab_extraction', schema: EXTRACTION_SCHEMA } },
     temperature: 0,
   }
-  if (model.includes('deepseek')) {
+  if (model.includes('gemma-4')) {
+    // Thinking is on unless asked off, and would spend the reply's tokens before the JSON starts.
+    input.chat_template_kwargs = { enable_thinking: false }
+    input.max_completion_tokens = 16_384
+  } else if (model.includes('deepseek')) {
     input.reasoning_effort = 'none'
     input.max_completion_tokens = 16_384
   } else {
@@ -284,7 +319,7 @@ function modelText(raw: unknown): string {
 }
 
 /** Layout-preserving text per page via pdf.js; falls back to Workers AI markdown conversion. */
-async function pdfPages(env: Env, bytes: ArrayBuffer, filename: string): Promise<string[]> {
+async function pdfPages(env: Env, bytes: ArrayBuffer): Promise<string[]> {
   try {
     const { items } = await extractTextItems(new Uint8Array(bytes.slice(0)))
     const pages = items.map((page) => layoutPage(page.map((i) => ({ str: i.str, x: i.x, y: i.y, width: i.width, fontSize: i.fontSize }))))
@@ -292,7 +327,7 @@ async function pdfPages(env: Env, bytes: ArrayBuffer, filename: string): Promise
   } catch (err) {
     console.error('pdf.js text extraction failed', logMessage(err))
   }
-  const converted = await env.AI.toMarkdown({ name: filename, blob: new Blob([bytes], { type: 'application/pdf' }) })
+  const converted = await env.AI.toMarkdown({ name: 'report.pdf', blob: new Blob([bytes], { type: 'application/pdf' }) })
   const result = Array.isArray(converted) ? converted[0] : converted
   if (!result || result.format === 'error') throw new Error(`Could not read PDF text: ${(result as { error?: string })?.error ?? 'conversion failed'}`)
   return [String(result.data ?? '')]
@@ -357,6 +392,9 @@ export function finishDocument(kind: SourceKind, panels: ExtractedPanel[], warni
   const merged = mergePanels(panels).filter((p) => p.results.length)
   const notes = [...new Set(warnings)]
   if (!merged.length) notes.push('No lab results were found in this file.')
+  // A long report is read in pieces, and a piece can lose sight of the date its results belong to.
+  if (new Set(merged.map((p) => p.draw_date).filter(Boolean)).size > 1) notes.push('This report has results from more than one collection date. Check that each result is under the right date.')
+  if (merged.some((p) => p.results.some((r) => usesDecimalComma(r.raw_value)))) notes.push(DECIMAL_COMMA_NOTE)
   for (const p of merged) if (!p.draw_date) p.warnings = [...(p.warnings ?? []), 'Collection date not found. Set it before committing.']
   return { source_kind: kind, panels: merged, document_warnings: notes }
 }
@@ -371,7 +409,14 @@ function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.map((x) => String(x)).filter(Boolean) : []
 }
 
-function toBase64(bytes: ArrayBuffer): string {
+/**
+ * Base64 by the runtime's own encoder where there is one. Building the string in
+ * JavaScript costs about 25 ms of CPU per megabyte, and the Workers Free plan
+ * allows 10 ms for a whole invocation.
+ */
+export function toBase64(bytes: ArrayBuffer): string {
+  const native = (globalThis as { Buffer?: { from(data: ArrayBuffer): { toString(encoding: 'base64'): string } } }).Buffer
+  if (native) return native.from(bytes).toString('base64')
   const arr = new Uint8Array(bytes)
   let binary = ''
   for (let i = 0; i < arr.length; i += 0x8000) binary += String.fromCharCode(...arr.subarray(i, i + 0x8000))

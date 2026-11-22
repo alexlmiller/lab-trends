@@ -7,8 +7,9 @@ import { sameReportedValue } from '../../shared/semantics'
 import type { Candidate, CommitSummary, ExtractedResult, ExtractionDocument, ImportBatch, Marker } from '../../shared/types'
 import { Icon } from '../components/Icon'
 import { MarkerPicker } from '../components/MarkerPicker'
-import { Alert, Button, Card, cx, Empty, Field, inputClass, PageHeader, Spinner } from '../components/ui'
-import { api, ApiError } from '../lib/api'
+import { Alert, Button, Card, cx, Field, inputClass, PageHeader, Spinner } from '../components/ui'
+import { useAction } from '../lib/action'
+import { api } from '../lib/api'
 import { useData, useDataset } from '../lib/data'
 import { plural } from '../lib/format'
 import { drawPath } from '../lib/history'
@@ -104,9 +105,14 @@ export function ImportPage() {
       {error ? <Alert tone="error">{error}</Alert> : null}
       <Alert tone="info">
         {documentImports
-          ? `Spreadsheets are parsed inside the app. PDFs are converted to text, scrubbed of names, dates of birth, record numbers and contact details, then read by an AI model ${outside.length ? 'outside Cloudflare' : 'on Cloudflare Workers AI'}. Photos are sent to the model as they are, with nothing removed. Results are matched to known markers; you can remap any row before committing.`
+          ? `Spreadsheets are parsed inside the app. A PDF is turned into text, and names, dates of birth, record numbers, addresses, phone numbers and email addresses are removed where the report labels them, before an AI model ${outside.length ? 'outside Cloudflare' : 'on Cloudflare Workers AI'} reads it. A name or number printed without a label can still reach the model. Photos are sent to the model as they are, with nothing removed. A file’s name is never sent. Results are matched to known tests; you can remap any row before committing.`
           : 'This deployment has no extraction queue, so it imports spreadsheets only.'}
       </Alert>
+      {documentImports && me?.ai_gateway ? (
+        <Alert tone="warn">
+          This deployment sends what the model reads through a Cloudflare AI Gateway. Depending on how that gateway is set up, it can keep a log or a cached copy of report text and photos.
+        </Alert>
+      ) : null}
       {documentImports && outside.length ? (
         <Alert tone="warn">
           This deployment is set to read uploads with {outside.join(' and ')}, which Cloudflare does not run. Report text and photos are sent to that provider.
@@ -139,7 +145,6 @@ export function ImportPage() {
 function BatchStatus({ batch }: { batch: BatchListItem }) {
   if (batch.status === 'committed')
     return <span className="text-[12px] text-good">Committed{batch.summary ? ` · ${plural(batch.summary.results_created + batch.summary.results_replaced, 'result')}` : ''}</span>
-  if (batch.status === 'discarded') return <span className="text-[12px] text-ink-faint">Discarded</span>
   const busy = batch.candidates.some((c) => c.status === 'queued' || c.status === 'processing')
   const failed = batch.candidates.some((c) => c.status === 'failed')
   return <span className={cx('text-[12px] font-medium', failed ? 'text-high' : 'text-warn')}>{busy ? 'Reading…' : failed ? 'Needs attention' : 'Ready to review'}</span>
@@ -156,7 +161,8 @@ export function ImportReviewPage() {
   const [docs, setDocs] = useState<Record<string, ExtractionDocument>>({})
   const [dirty, setDirty] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const act = useAction()
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [summary, setSummary] = useState<CommitSummary | null>(null)
 
   const load = useCallback(async () => {
@@ -178,11 +184,38 @@ export function ImportReviewPage() {
   }, [load, loadCatalog])
 
   const pending = batch?.candidates.some((c) => c.status === 'queued' || c.status === 'processing')
+  const statuses = batch?.candidates.map((c) => c.id + c.status).join() ?? ''
+  // While a file is being read, ask how it is going: a small request, less often as time passes,
+  // and not at all while the tab is in the background. The drafts are fetched only when something changed.
   useEffect(() => {
     if (!pending) return
-    const t = setInterval(() => void load(), 3000)
-    return () => clearInterval(t)
-  }, [pending, load])
+    let timer: ReturnType<typeof setTimeout>
+    let delay = 3_000
+    let stopped = false
+    const ask = async () => {
+      if (stopped || document.visibilityState !== 'visible') return
+      try {
+        const now = await api.get<ImportBatch>(`/subjects/${ds.subjectId}/imports/${batchId}?brief=1`)
+        if (now.candidates.map((c) => c.id + c.status).join() !== statuses) return void (await load())
+      } catch {
+        /* keep asking: the next answer may come through */
+      }
+      delay = Math.min(delay * 1.5, 20_000)
+      if (!stopped) timer = setTimeout(ask, delay)
+    }
+    const onVisible = () => {
+      clearTimeout(timer)
+      delay = 3_000
+      void ask()
+    }
+    timer = setTimeout(ask, delay)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      stopped = true
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [pending, statuses, load, ds.subjectId, batchId])
 
   const markers = useMemo(() => {
     const map = new Map<string, Marker>()
@@ -270,7 +303,7 @@ export function ImportReviewPage() {
   if (error) return <Alert tone="error">{error}</Alert>
   if (!batch) return <Spinner label="Loading import…" />
 
-  const live = batch.candidates.filter((c) => c.status !== 'discarded')
+  const live = batch.candidates
   const ready = live.filter((c) => c.status === 'ready')
   const includedCount = ready.reduce((n, c) => n + (docs[c.id]?.panels ?? []).reduce((k, p) => k + p.results.filter((r) => r.include !== false).length, 0), 0)
   const tagUpdates = isShared
@@ -299,6 +332,26 @@ export function ImportReviewPage() {
             </ul>
           </Card>
         ) : null}
+        {s?.same_day_conflict_count ? (
+          <Alert tone="warn">
+            <div className="font-medium">{plural(s.same_day_conflict_count, 'result')} not saved: the import had two different values for the same test on the same date.</div>
+            <p className="m-0 mt-1">One value per test per date is kept, and the first was saved. Check the report and correct the saved result if the other value is the right one.</p>
+            {s.same_day_conflicts ? (
+              <>
+                <ul className="m-0 mt-1.5 grid gap-0.5 pl-5">
+                  {s.same_day_conflicts.map((x, i) => (
+                    <li key={i}>
+                      {x.name}, {formatDate(x.date)}: saved <b>{x.kept}</b>, not saved <b>{x.dropped}</b>
+                    </li>
+                  ))}
+                </ul>
+                <p className="m-0 mt-1.5 text-[12.5px]">This list is shown once. The values that were not saved are not kept anywhere.</p>
+              </>
+            ) : (
+              <p className="m-0 mt-1">Which ones was shown when the import was saved. To find them again, open the source file from the draw.</p>
+            )}
+          </Alert>
+        ) : null}
         <div className="flex gap-2">
           <Button variant="primary" onClick={() => navigate('/')}>
             View results
@@ -308,8 +361,6 @@ export function ImportReviewPage() {
       </div>
     )
   }
-  if (batch.status === 'discarded') return <Empty title="This import was discarded" />
-
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -322,40 +373,40 @@ export function ImportReviewPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button
-            variant="ghost"
-            onClick={async () => {
-              await api.post(`/subjects/${ds.subjectId}/imports/${batchId}/discard`)
-              navigate('/import')
+            variant={confirmDiscard ? 'danger' : 'ghost'}
+            title="Deletes the drafts and the uploaded files"
+            onBlur={() => setConfirmDiscard(false)}
+            onClick={() => {
+              // Discarding deletes the uploads, so it takes a second press.
+              if (!confirmDiscard) return setConfirmDiscard(true)
+              void act.run(async () => {
+                await api.post(`/subjects/${ds.subjectId}/imports/${batchId}/discard`)
+                navigate('/import')
+              })
             }}
           >
-            Discard import
+            {confirmDiscard ? 'Delete this import?' : 'Discard import'}
           </Button>
-          {dirty.size ? (
-            <Button onClick={() => saveAll().catch((e: Error) => setError(e.message))}>Save draft</Button>
-          ) : null}
+          {dirty.size ? <Button onClick={() => act.run(saveAll)}>Save draft</Button> : null}
           <Button
             variant="primary"
-            busy={busy}
+            busy={act.busy}
             disabled={pending || (!includedCount && !tagUpdates) || missingDates || unmapped}
             title={missingDates ? 'Set a collection date for every draw' : unmapped ? 'Map every row to a test' : undefined}
-            onClick={async () => {
-              setBusy(true)
-              try {
+            onClick={() =>
+              act.run(async () => {
                 await saveAll()
-                const s = await api.post<CommitSummary>(`/subjects/${ds.subjectId}/imports/${batchId}/commit`)
-                setSummary(s)
+                setSummary(await api.post<CommitSummary>(`/subjects/${ds.subjectId}/imports/${batchId}/commit`))
                 await ds.reload()
-              } catch (e) {
-                setError(e instanceof ApiError ? e.message : String(e))
-              } finally {
-                setBusy(false)
-              }
-            }}
+              })
+            }
           >
             {!includedCount && tagUpdates ? `Save context for ${plural(tagUpdates, 'draw')}` : `Commit ${plural(includedCount, 'result')}${isShared ? ' as one draw' : ''}`}
           </Button>
         </div>
       </div>
+      {/* Something that went wrong while saving is shown here, with the draft still on the page to fix. */}
+      {act.error ? <Alert tone="error">{act.error}</Alert> : null}
       {missingDates ? <Alert tone="warn">{isShared ? 'Set the collection date in the draw details before committing.' : 'One or more draws has no collection date. Set it before committing.'}</Alert> : null}
 
       {canShare ? (
@@ -379,17 +430,23 @@ export function ImportReviewPage() {
           subjectId={ds.subjectId}
           onChange={(fn) => update(c.id, fn)}
           onUseDate={(pi, date) =>
-            isShared ? setSharedField('draw_date', date) : void updateAndSave(c.id, (d) => void (d.panels[pi].draw_date = date)).catch((e: Error) => setError(e.message))
+            isShared ? setSharedField('draw_date', date) : void act.run(() => updateAndSave(c.id, (d) => void (d.panels[pi].draw_date = date)))
           }
           shared={isShared ? shared : null}
-          onRetry={async () => {
-            await api.post(`/subjects/${ds.subjectId}/imports/${batchId}/candidates/${c.id}/retry`)
-            await load()
-          }}
-          onRemove={async () => {
-            await api.del(`/subjects/${ds.subjectId}/imports/${batchId}/candidates/${c.id}`)
-            await load()
-          }}
+          onRetry={() =>
+            act.run(async () => {
+              await api.post(`/subjects/${ds.subjectId}/imports/${batchId}/candidates/${c.id}/retry`)
+              await load()
+            })
+          }
+          onRemove={() =>
+            act.run(async () => {
+              const gone = await api.del<{ import_deleted: boolean }>(`/subjects/${ds.subjectId}/imports/${batchId}/candidates/${c.id}`)
+              // Leaving out the last file leaves nothing to review.
+              if (gone.import_deleted) navigate('/import')
+              else await load()
+            })
+          }
           onMarkerCreated={() => void loadCatalog()}
         />
       ))}
@@ -436,14 +493,14 @@ function CandidateCard({
             </a>
           ) : null}
           {c.status === 'ready' || c.status === 'failed' ? (
-            <Button size="sm" variant="ghost" icon="x" onClick={onRemove}>
+            <Button size="sm" variant="ghost" icon="x" onClick={onRemove} title={c.file_id ? 'Removes this file from the import and deletes the upload' : undefined}>
               Leave out
             </Button>
           ) : null}
         </div>
       </div>
       <div className="grid gap-3 p-4">
-        {c.status === 'queued' || c.status === 'processing' ? <Spinner label={c.status === 'queued' ? 'Waiting to be read…' : 'Reading the report… this can take a minute'} /> : null}
+        {c.status === 'queued' || c.status === 'processing' ? <Spinner label={c.status === 'queued' ? 'Waiting to be read…' : 'Reading the report… a minute or two, and longer for a long PDF'} /> : null}
         {c.status === 'failed' ? (
           <Alert tone="error">
             {c.error ?? 'Extraction failed'}
@@ -698,7 +755,7 @@ function ReviewRow({
           </button>
         ) : (
           <Button size="sm" onClick={() => setPicking(true)}>
-            Choose marker
+            Choose test
           </Button>
         )}
         {picking ? (

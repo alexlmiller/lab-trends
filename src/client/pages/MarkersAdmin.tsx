@@ -7,6 +7,7 @@ import { Icon } from '../components/Icon'
 import { DeleteMarkerModal } from '../components/DeleteMarker'
 import { MarkerPicker } from '../components/MarkerPicker'
 import { Alert, Button, Card, cx, Field, inputClass, Modal, PageHeader, Spinner } from '../components/ui'
+import { useAction } from '../lib/action'
 import { api } from '../lib/api'
 import { useData, useDataset } from '../lib/data'
 
@@ -94,8 +95,7 @@ function EditMarker({ marker, onClose, onSaved }: { marker: Marker; onClose: () 
   const [category, setCategory] = useState(marker.category)
   const [units, setUnits] = useState(marker.default_units ?? '')
   const [description, setDescription] = useState(marker.description ?? '')
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const { busy, error, run } = useAction()
   return (
     <Modal
       title={`Edit ${marker.name}`}
@@ -106,17 +106,13 @@ function EditMarker({ marker, onClose, onSaved }: { marker: Marker; onClose: () 
           <Button
             variant="primary"
             busy={busy}
-            onClick={async () => {
-              setBusy(true)
-              try {
+            onClick={() =>
+              run(async () => {
                 await api.patch(`/markers/${marker.id}`, { name, long_name: longName, category, default_units: units, description })
                 await onSaved()
                 onClose()
-              } catch (e) {
-                setError((e as Error).message)
-                setBusy(false)
-              }
-            }}
+              })
+            }
           >
             Save
           </Button>
@@ -148,8 +144,7 @@ function EditMarker({ marker, onClose, onSaved }: { marker: Marker; onClose: () 
 
 function MergeMarker({ marker, catalog, onClose, onSaved }: { marker: Marker; catalog: Marker[]; onClose: () => void; onSaved: () => Promise<void> }) {
   const [target, setTarget] = useState<Marker | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const { busy, error, run } = useAction()
   return (
     <Modal
       title={`Merge ${marker.name}`}
@@ -161,17 +156,13 @@ function MergeMarker({ marker, catalog, onClose, onSaved }: { marker: Marker; ca
             variant="primary"
             busy={busy}
             disabled={!target}
-            onClick={async () => {
-              setBusy(true)
-              try {
+            onClick={() =>
+              run(async () => {
                 await api.post(`/markers/${marker.id}/merge`, { into_id: target!.id })
                 await onSaved()
                 onClose()
-              } catch (e) {
-                setError((e as Error).message)
-                setBusy(false)
-              }
-            }}
+              })
+            }
           >
             Merge into {target?.name ?? '…'}
           </Button>
@@ -180,7 +171,7 @@ function MergeMarker({ marker, catalog, onClose, onSaved }: { marker: Marker; ca
     >
       <div className="grid gap-3">
         <p className="m-0 text-[13.5px] text-ink-dim">
-          All results for <b className="text-ink">{marker.name}</b> move to the marker you pick, and its name becomes an alias so future imports land there too. Units are not converted.
+          All results for <b className="text-ink">{marker.name}</b> move to the test you pick, and its name becomes an alias so future imports land there too. Units are not converted.
         </p>
         {target ? (
           <div className="flex items-center gap-2 rounded-md border border-line bg-sunken px-3 py-2 text-[13px]">

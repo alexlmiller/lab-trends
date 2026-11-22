@@ -2,7 +2,8 @@ import { correlationFor } from '../src/client/lib/correlate'
 import { describe, expect, it } from 'vitest'
 import { activeOn, chartOccurrences, validatedPeriods } from '../src/shared/events'
 import type { MarkerSeries, Panel, Result, TimelineEvent } from '../src/shared/types'
-import { priorResult, relativeToReference, resultChange, resultLabel } from '../src/client/lib/report'
+import { priorResult, resultChange } from '../src/client/lib/report'
+import { relativeToReference } from '../src/shared/semantics'
 
 const result = (overrides: Partial<Result> = {}): Result => ({
   id: 'demo',
@@ -79,7 +80,12 @@ describe('reported comparisons', () => {
     expect(relativeToReference(result({ comparator: 'text', value_numeric: null, ref_low: 2 }))).toBeUndefined()
   })
   it('shows differences only for comparable exact measurements', () => {
-    expect(resultChange(result(), result({ value_numeric: 3.3 }))).toEqual({ value: '+0.3', unit: 'mg/L', note: 'Higher' })
+    const up = resultChange(result(), result({ value_numeric: 3.3 }))
+    expect(up).toMatchObject({ value: '+0.3', unit: 'mg/L', note: 'Higher' })
+    expect(up.ratio).toBeCloseTo(0.1)
+    // No percentage from zero, and none where no difference is given.
+    expect(resultChange(result({ value_numeric: 0 }), result()).ratio).toBeUndefined()
+    expect(resultChange(result(), result({ comparator: '<' })).ratio).toBeUndefined()
     expect(resultChange(result({ raw_units: 'µg/L' }), result({ raw_units: 'ug/L', value_numeric: 0 })).value).toBe('−3')
     for (const other of [undefined, result({ comparator: '<' }), result({ raw_units: null }), result({ raw_units: 'mg/dL' })])
       expect(resultChange(result(), other).value).toBe('—')
@@ -88,8 +94,6 @@ describe('reported comparisons', () => {
     expect(resultChange(result({ raw_units: 'mm/Hr' }), result({ raw_units: 'mm/hr', value_numeric: 5 })).value).toBe('+2')
     const text = result({ raw_value: 'Negative', value_numeric: null, comparator: 'text' })
     expect(resultChange(text, text).value).toBe('Same result')
-    expect(resultLabel(result({ lab_flag: 'critical' }))).toBe('Critical flag')
-    expect(resultLabel(result({ lab_flag: 'abnormal' }))).toBe('Flagged')
   })
   it('excludes future draws and the selected draw itself from the previous reading', () => {
     const early = result({ draw_date: '2026-01-01' })

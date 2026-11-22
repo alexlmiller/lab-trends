@@ -56,6 +56,13 @@ CSV or XLSX, in either layout. Each sheet tab is read.
 
 - **One row per result,** with columns named `Test`, `Value` and `Date`. `Units`, `Range`, `Flag` and `Lab` are optional.
 - **One row per test,** with `Test`, `Reference range` and `Units` as the first three columns and a column for each date.
+- **Dates:** `2025-03-04` is always safe. `3/4/2025` is read as month/day/year unless a date in the same sheet has a first number above 12; when the sheet cannot tell, the draft says so.
+- **Numbers:** `1,500` is read as 1500 and `3,8` as 3.8. Write decimals with a point to leave no doubt. A CSV may be separated by commas, semicolons or tabs.
+- A sheet, column or row the app leaves out is named in a warning on the draft.
+
+## Limits
+
+20 files and 64 MB per upload, 20 MB per file, 5,000 results per file.
 
 ## Not readable yet
 
@@ -63,4 +70,8 @@ Structured health-record exports, such as the XML files in a MyChart snapshot, M
 
 ## How files are handled
 
-Spreadsheets are parsed inside the app. PDFs are converted to text, scrubbed of names, dates of birth, record numbers and contact details, then read by an AI model on Cloudflare Workers AI. Photos are sent to the model as-is.
+- Spreadsheets are parsed inside the app.
+- PDFs are converted to text. Names, dates of birth, record numbers, addresses, phone numbers and emails are removed where the report labels them (`Patient:`, `DOB:`, `MRN:`), then an AI model on Cloudflare Workers AI reads the rest. An identifier printed without a label can still reach the model.
+- Photos are sent to the model as they are, with everything visible in them.
+- A file's name is never sent to the model.
+- Discarding an import, or leaving a file out of one, deletes that upload. A saved upload stays until the last draw that uses it is deleted.

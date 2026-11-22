@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
+import type { SavedView } from '../../shared/types'
+import { useAction } from '../lib/action'
 import { api } from '../lib/api'
 import { useDataset } from '../lib/data'
 import { PRESETS } from '../lib/presets'
@@ -10,28 +12,25 @@ export function HistoryViews({ ids, onChoose, onClose }: { ids: string[]; onChoo
   const navigate = useNavigate()
   const location = useLocation()
   const [name, setName] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+  const { busy, error, run } = useAction()
   const bySlug = new Map(ds.markers.filter((m) => m.results.length).map((m) => [m.slug, m.id]))
   const presets = PRESETS.map((p) => ({ name: p.name, ids: p.slugs.flatMap((slug) => bySlug.get(slug) ?? []) })).filter(
     (p) => p.ids.length >= 2,
   )
-  async function save() {
-    if (busy || !name.trim()) return
-    setBusy(true)
-    setError('')
-    try {
+  const save = () =>
+    run(async () => {
+      if (!name.trim()) return
       const params = new URLSearchParams(location.search)
       params.set('m', ids.join(','))
-      await api.post('/subjects/' + ds.subjectId + '/views', { name: name.trim(), path: '/history?' + params })
-      await ds.reload()
+      const view = await api.post<SavedView>('/subjects/' + ds.subjectId + '/views', { name: name.trim(), path: '/history?' + params })
+      ds.patch((d) => ({ ...d, saved_views: [...d.saved_views, view] }))
       onClose()
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
+    })
+  const remove = (id: string) =>
+    run(async () => {
+      await api.del('/subjects/' + ds.subjectId + '/views/' + id)
+      ds.patch((d) => ({ ...d, saved_views: d.saved_views.filter((v) => v.id !== id) }))
+    })
   return (
     <Modal title="History views" onClose={onClose}>
       <div className="grid gap-4">
@@ -75,18 +74,7 @@ export function HistoryViews({ ids, onChoose, onClose }: { ids: string[]; onChoo
                   size="sm"
                   aria-label={'Delete saved view ' + v.name}
                   disabled={busy}
-                  onClick={async () => {
-                    setBusy(true)
-                    setError('')
-                    try {
-                      await api.del('/subjects/' + ds.subjectId + '/views/' + v.id)
-                      await ds.reload()
-                    } catch (e) {
-                      setError((e as Error).message)
-                    } finally {
-                      setBusy(false)
-                    }
-                  }}
+                  onClick={() => remove(v.id)}
                 />
               </div>
             ))}

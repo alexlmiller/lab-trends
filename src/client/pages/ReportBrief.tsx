@@ -8,15 +8,17 @@ import { useNavigate } from 'react-router'
 import { formatDate } from '../../shared/dates'
 import type { MarkerSeries, Result } from '../../shared/types'
 import { categoryLabel, categoryOrder } from '../../shared/categories'
-import { DrawSwitcher, isOutOfRange, ResultRow } from '../components/ReportParts'
+import { isOutOfRange, resultStatus } from '../../shared/semantics'
+import { DrawSwitcher, ResultRow, SourceReports } from '../components/ReportParts'
 import { Icon } from '../components/Icon'
 import { ResultEditModal } from '../components/ResultEdit'
-import { Button, ButtonAnchor, ButtonLink, Empty, Modal, PageHeader, SectionHeader, Segmented, Stat, StatGrid } from '../components/ui'
+import { Alert, Button, ButtonLink, Empty, Modal, PageHeader, SectionHeader, Segmented, Stat, StatGrid } from '../components/ui'
+import { useAction } from '../lib/action'
 import { api } from '../lib/api'
 import { PanelEditModal } from './Draws'
 import { useDataset, useParam, useUpdateParams } from '../lib/data'
 import { plural } from '../lib/format'
-import { priorResult, relativeToReference } from '../lib/report'
+import { priorResult } from '../lib/report'
 
 type Row = { marker: MarkerSeries; result: Result }
 
@@ -26,6 +28,7 @@ export function ReportBriefPage() {
   const [editing, setEditing] = useState<Row | null>(null)
   const [editDraw, setEditDraw] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const remove = useAction()
   const [draw] = useParam('draw', '')
   const [selected] = useParam('result', '')
   const [groupParam] = useParam('group', 'status')
@@ -53,10 +56,10 @@ export function ReportBriefPage() {
   const byName = (a: Row, b: Row) => a.marker.name.localeCompare(b.marker.name)
   const severity = (r: Result) => (r.lab_flag === 'critical' ? 0 : 1)
   const out = rows.filter((r) => isOutOfRange(r.result)).sort((a, b) => severity(a.result) - severity(b.result) || byName(a, b))
-  const inRange = rows.filter((r) => !isOutOfRange(r.result) && relativeToReference(r.result) === 'in').sort(byName)
-  const other = rows.filter((r) => !isOutOfRange(r.result) && relativeToReference(r.result) !== 'in').sort(byName)
-  const high = out.filter((r) => relativeToReference(r.result) === 'high').length
-  const low = out.filter((r) => relativeToReference(r.result) === 'low').length
+  const inRange = rows.filter((r) => resultStatus(r.result) === 'in').sort(byName)
+  const other = rows.filter((r) => resultStatus(r.result) === 'unknown').sort(byName)
+  const high = out.filter((r) => resultStatus(r.result) === 'high').length
+  const low = out.filter((r) => resultStatus(r.result) === 'low').length
   const firstTime = rows.filter(({ marker }) => !priorResult(marker, panel)).length
   const i = ds.panels.indexOf(panel)
   const previousDraw = ds.panels[i + 1]
@@ -187,11 +190,7 @@ export function ReportBriefPage() {
           <Button size="sm" icon="pencil" onClick={() => setEditDraw(true)}>
             Edit draw
           </Button>
-          {panel.source_file_id ? (
-            <ButtonAnchor size="sm" variant="ghost" icon="external" href={`/api/subjects/${encodeURIComponent(ds.subjectId)}/files/${encodeURIComponent(panel.source_file_id)}`}>
-              Source report
-            </ButtonAnchor>
-          ) : null}
+          <SourceReports panel={panel} />
           <ButtonLink to="/markers" size="sm" variant="ghost" icon="flask">
             All tests
           </ButtonLink>
@@ -231,21 +230,28 @@ export function ReportBriefPage() {
               <Button onClick={() => setConfirmDelete(false)}>Cancel</Button>
               <Button
                 variant="danger"
-                onClick={async () => {
-                  await api.del(`/subjects/${ds.subjectId}/panels/${panel.id}`)
-                  setConfirmDelete(false)
-                  await ds.reload()
-                  navigate('/', { replace: true })
-                }}
+                busy={remove.busy}
+                onClick={() =>
+                  remove.run(async () => {
+                    await api.del(`/subjects/${ds.subjectId}/panels/${panel.id}`)
+                    setConfirmDelete(false)
+                    await ds.reload()
+                    navigate('/', { replace: true })
+                  })
+                }
               >
                 Delete {plural(panel.result_count, 'result')}
               </Button>
             </>
           }
         >
-          <p className="m-0 text-[13.5px]">
-            The draw from {formatDate(panel.draw_date)} and its {plural(panel.result_count, 'result')} will be hidden from every chart. The record is kept (soft-deleted) and the source file stays in storage.
-          </p>
+          <div className="grid gap-3 text-[13.5px]">
+            <p className="m-0">
+              The draw from {formatDate(panel.draw_date)} and its {plural(panel.result_count, 'result')} will be deleted for good
+              {panel.sources.length ? `, along with ${panel.sources.length > 1 ? 'the uploaded reports' : 'the uploaded report'} they came from unless another draw also uses ${panel.sources.length > 1 ? 'them' : 'it'}` : ''}. This cannot be undone.
+            </p>
+            {remove.error ? <Alert tone="error">{remove.error}</Alert> : null}
+          </div>
         </Modal>
       ) : null}
     </div>

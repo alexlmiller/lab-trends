@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { categoryLabel, sortCategories } from '../../shared/categories'
-import { dayNumber, formatDate, todayDate } from '../../shared/dates'
+import { dayNumber, formatDate, MONTHS, todayDate } from '../../shared/dates'
 import type { MarkerSeries } from '../../shared/types'
 import { Sparkline } from '../charts/Sparkline'
 import { Icon } from '../components/Icon'
 import { Button, cx, Empty, inputClass, linkClass, PageHeader, Segmented } from '../components/ui'
-import { api } from '../lib/api'
-import { useDataset, useParam } from '../lib/data'
+import { useDataset, useParam, useSavePreferences } from '../lib/data'
 import { formatPct, plural } from '../lib/format'
 import { PRESETS } from '../lib/presets'
-import { latestResult, pointsOf, statusOf, unitsSummary } from '../lib/series'
+import { isOutOfRange, resultStatus, statusTone } from '../../shared/semantics'
+import { latestResult, pointsOf, STATUS_PHRASE, unitsSummary } from '../lib/series'
 
 type Filter = 'all' | 'out' | 'flagged' | 'starred' | 'recent'
 
@@ -20,7 +20,9 @@ export function OverviewPage() {
   const [query, setQuery] = useParam('q', '')
   const [filter, setFilter] = useParam('filter', 'all')
   const [selected, setSelected] = useState<string[]>([])
-  const starred = new Set(ds.preferences.starred_marker_ids)
+  const savePreferences = useSavePreferences()
+  // One set for as long as the list is the same, so the filtering and grouping below are not redone on every render.
+  const starred = useMemo(() => new Set(ds.preferences.starred_marker_ids), [ds.preferences.starred_marker_ids])
 
   // One time axis for every sparkline, so co-movement lines up vertically.
   const domain = useMemo<[number, number]>(() => {
@@ -36,8 +38,7 @@ export function OverviewPage() {
     return ds.markers.filter((m) => {
       if (q && ![m.name, m.long_name ?? '', categoryLabel(m.category), ...(m.aliases ?? [])].some((s) => s.toLowerCase().includes(q))) return false
       const latest = latestResult(m)
-      const st = statusOf(latest)
-      if (filter === 'out' && st !== 'high' && st !== 'low') return false
+      if (filter === 'out' && !(latest && isOutOfRange(latest))) return false
       if (filter === 'flagged' && !m.results.some((r) => r.lab_flag)) return false
       if (filter === 'starred' && !starred.has(m.id)) return false
       if (filter === 'recent' && (!latest || dayNumber(latest.draw_date) < yearAgo)) return false
@@ -48,18 +49,14 @@ export function OverviewPage() {
   const groups = useMemo(() => {
     const by = new Map<string, MarkerSeries[]>()
     for (const m of visible) by.set(m.category, [...(by.get(m.category) ?? []), m])
-    return sortCategories([...by.keys()], ds.preferences.section_order).map((c) => ({
+    return sortCategories([...by.keys()]).map((c) => ({
       category: c,
       markers: by.get(c)!.sort((a, b) => Number(starred.has(b.id)) - Number(starred.has(a.id)) || a.name.localeCompare(b.name)),
     }))
-  }, [visible, ds.preferences.section_order, starred])
+  }, [visible, starred])
 
-  const outNow = ds.markers.filter((m) => ['high', 'low'].includes(statusOf(latestResult(m)))).length
-  const toggleStar = async (id: string) => {
-    const next = starred.has(id) ? [...starred].filter((x) => x !== id) : [...starred, id]
-    await api.put(`/subjects/${ds.subjectId}/preferences`, { starred_marker_ids: next, section_order: ds.preferences.section_order })
-    await ds.reload()
-  }
+  const outNow = ds.markers.filter((m) => statusTone(resultStatus(latestResult(m)))).length
+  const toggleStar = (id: string) => savePreferences({ starred_marker_ids: starred.has(id) ? [...starred].filter((x) => x !== id) : [...starred, id] })
   const bySlug = new Map(ds.markers.map((m) => [m.slug, m]))
   const presets = PRESETS.map((p) => ({ ...p, ids: p.slugs.map((s) => bySlug.get(s)?.id).filter((x): x is string => Boolean(x)) })).filter((p) => p.ids.length >= 2)
 
@@ -179,8 +176,6 @@ export function OverviewPage() {
   )
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
 function MarkerRow({
   marker,
   domain,
@@ -197,7 +192,8 @@ function MarkerRow({
   onToggleStar: () => void
 }) {
   const latest = latestResult(marker)
-  const status = statusOf(latest)
+  const status = resultStatus(latest)
+  const tone = statusTone(status)
   const pts = pointsOf(marker)
   const last = pts.at(-1)
   const prev = pts.length > 1 ? pts[pts.length - 2] : null
@@ -231,10 +227,10 @@ function MarkerRow({
         <Sparkline points={pts} domain={domain} width={112} height={24} />
       </div>
       <div className="flex items-baseline justify-end gap-1 text-right tabular">
-        <span className={cx('text-[14px] font-semibold', status === 'high' && 'text-high', status === 'low' && 'text-low')}>{latest?.raw_value ?? '—'}</span>
-        {status === 'high' || status === 'low' ? (
-          <span className={cx('text-[10px] font-bold', status === 'high' ? 'text-high' : 'text-low')} title={status === 'high' ? 'Above range' : 'Below range'}>
-            {status === 'high' ? 'H' : 'L'}
+        <span className={cx('text-[14px] font-semibold', tone === 'high' && 'text-high', tone === 'low' && 'text-low')}>{latest?.raw_value ?? '—'}</span>
+        {tone ? (
+          <span className={cx('text-[10px] font-bold', tone === 'high' ? 'text-high' : 'text-low')} title={STATUS_PHRASE[status]}>
+            {status === 'high' ? 'H' : status === 'low' ? 'L' : '!'}
           </span>
         ) : null}
         <span className="max-w-[56px] truncate text-[11px] text-ink-faint">{units}</span>

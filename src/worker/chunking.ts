@@ -62,6 +62,8 @@ export function splitText(text: string, budget: number): string[] {
       const blank = buf.findLastIndex((l, i) => i >= buf.length / 2 && !l.trim())
       const keep = blank > 0 ? buf.slice(0, blank) : buf
       const carry = blank > 0 ? buf.slice(blank + 1) : []
+      // A collection-date heading belongs with the results under it, not at the foot of the piece before.
+      while (keep.length > 1 && isDateHeading(keep[keep.length - 1])) carry.unshift(keep.pop()!)
       out.push(keep.join('\n'))
       buf = carry
       size = carry.reduce((s, l) => s + denseLength(l) + 1, 0)
@@ -71,6 +73,13 @@ export function splitText(text: string, budget: number): string[] {
   }
   if (buf.some((l) => l.trim())) out.push(buf.join('\n'))
   return out
+}
+
+/** A short line that names a collection date, or a blank line right under one. */
+function isDateHeading(line: string): boolean {
+  const text = line.trim()
+  if (!text) return true
+  return text.length < 100 && /\b(?:collected|collection|drawn|specimen|date)\b/i.test(text) && /\d{1,4}[/.-]\d{1,2}[/.-]\d{1,4}|\b[a-z]{3,9}\.? \d{1,2},? \d{4}\b/i.test(text)
 }
 
 const fits = (a: string | null | undefined, b: string | null | undefined) => !a?.trim() || !b?.trim() || a.trim().toLowerCase() === b.trim().toLowerCase()
@@ -105,7 +114,8 @@ export function mergePanels(panels: ExtractedPanel[]): ExtractedPanel[] {
 function dedupeResults(rows: ExtractedResult[]): ExtractedResult[] {
   const seen = new Map<string, string[]>()
   return rows.filter((r) => {
-    const key = normalizeAlias(r.raw_name)
+    // A name with no letters or digits has no key of its own; its exact text stands in, so it matches only itself.
+    const key = normalizeAlias(r.raw_name) || r.raw_name.trim().toLowerCase()
     const values = seen.get(key) ?? []
     if (values.some((v) => sameReportedValue(v, r.raw_value))) return false
     seen.set(key, [...values, r.raw_value])
