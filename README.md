@@ -107,15 +107,29 @@ git push
 
 Cloudflare rebuilds and redeploys on push and applies any new migrations first. If you deployed from a terminal, run `git pull && npm install && npm run deploy` instead.
 
-## Privacy
+## Privacy and security
 
-- Everything stays in your Cloudflare account: results in a D1 database, uploaded files in an R2 bucket with no public address.
-- Spreadsheets are read inside the app. PDFs have names, dates of birth, record numbers and contact details stripped out before the text goes to the model. Photos go to the model as they are. The default model runs on Workers AI, so none of this leaves Cloudflare.
-- The app doesn't load anything from other sites: no fonts, analytics or scripts.
-- If you connect an AI assistant, the company that runs it sees whatever it reads.
+Lab results are about as personal as data gets, so the app is built to keep them in your hands.
+
+**It all lives in your own Cloudflare account.** There's no shared server and no service run by me. The app, the database (D1) and your uploaded files (R2) are created in your account when you deploy, and your data never passes through anyone else. The storage bucket has no public address, and you can export or delete everything at any time ([Backups](docs/operating.md#backups)).
+
+**Cloudflare Access sits in front of the whole app.** Most self-hosted apps have their own login page, which means the app itself is exposed to the internet and only its own code stands between a stranger and your data. Here, Cloudflare checks every request at its edge before it reaches the app, so someone who isn't signed in never touches the app's code at all. That gives you:
+
+- No passwords stored in the app, so there's nothing there to leak or guess. You sign in the way Access is set up, with your Cloudflare account or another provider, including its two-factor authentication.
+- A bug in the app can't expose your records to someone who isn't signed in, because their requests never get that far.
+- A second check inside the app. It verifies the signed token Access attaches to each request, only accepts the owner and the people the owner adds, and refuses everything if Access is ever switched off.
+
+**Your reports stay with Cloudflare.** Spreadsheets are read inside the app. PDFs have names, dates of birth, record numbers and contact details stripped out before the text goes to the model. Photos go to the model as they are. The model runs on Workers AI in your account, and Cloudflare [doesn't keep the inputs or outputs or train on them](https://developers.cloudflare.com/workers-ai/platform/data-usage/).
+
+**The browser side is locked down too.** The app loads nothing from other sites, so there are no fonts, analytics or tracking scripts, and a content security policy enforces that. Pages aren't indexed by search engines, and the app refuses changes that come from other sites. Logs record errors, never result values or report text.
+
+**A few things are up to you:**
+
 - Turn on two-factor authentication for your Cloudflare account. Anyone who can sign in to it can read the database.
+- Keep your copy up to date ([Updating](#updating)).
+- If you connect an AI assistant, the company that runs it sees whatever it reads.
 
-More detail in [docs/how-it-works.md](docs/how-it-works.md#privacy).
+Found a security problem? Please report it privately, as described in [SECURITY.md](SECURITY.md). The technical details are in [docs/how-it-works.md](docs/how-it-works.md#sign-in).
 
 ## More docs
 

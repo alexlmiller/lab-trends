@@ -64,7 +64,7 @@ View state lives in the URL (`?m=`, `?range=`, `?scale=`, `?layout=`, `?a=&b=`),
 
 ## Privacy
 
-The summary is in the [README](../README.md#privacy). Where each part lives:
+The summary is in the [README](../README.md#privacy-and-security). Where each part lives:
 
 - PDF redaction is pattern-based (`src/worker/redact.ts`): names, dates of birth, record numbers, phone numbers and emails. It runs before the text reaches any model.
 - `public/_headers` sets a content security policy that blocks loading anything from other sites.
