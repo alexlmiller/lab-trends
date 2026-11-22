@@ -90,8 +90,8 @@ export function GridPage() {
             onChange={(v) => setColor(v)}
             options={[
               { value: 'range', label: 'Vs reference', title: 'Below range = blue, above = orange' },
-              { value: 'history', label: 'Vs own history', title: 'Standard deviations from this marker’s own mean' },
-              { value: 'change', label: 'Change', title: 'Change from the previous draw of the same marker' },
+              { value: 'history', label: 'Vs own history', title: 'Standard deviations from this test’s own mean' },
+              { value: 'change', label: 'Change', title: 'Change from the previous draw of the same test' },
             ]}
           />
           <Segmented
@@ -109,7 +109,7 @@ export function GridPage() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-56">
           <Icon name="search" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-faint" />
-          <input className={cx(inputClass, 'h-8 pl-8 text-[13px]')} placeholder="Filter markers…" value={query} onChange={(e) => setQuery(e.target.value, true)} />
+          <input className={cx(inputClass, 'h-8 pl-8 text-[13px]')} placeholder="Filter tests…" value={query} onChange={(e) => setQuery(e.target.value, true)} />
         </div>
         <Chip active={category === 'all'} onClick={() => setCategory('all')}>
           All

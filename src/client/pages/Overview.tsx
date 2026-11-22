@@ -158,7 +158,7 @@ export function OverviewPage() {
           ))}
         </div>
       ) : (
-        <Empty title="No markers match" icon="search" />
+        <Empty title="No tests match" icon="search" />
       )}
 
       {selected.length ? (

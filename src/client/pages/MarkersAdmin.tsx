@@ -27,7 +27,7 @@ export function MarkersAdminPage() {
     return cats.map((c) => ({ c, markers: list.filter((m) => m.category === c).sort((a, b) => a.name.localeCompare(b.name)) }))
   }, [catalog, ds.markersById, showAll])
 
-  if (!catalog) return <Spinner label="Loading markers…" />
+  if (!catalog) return <Spinner label="Loading tests…" />
   const refresh = async () => {
     await Promise.all([loadCatalog(), ds.reload()])
   }
@@ -124,7 +124,7 @@ function EditMarker({ marker, onClose, onSaved }: { marker: Marker; onClose: () 
       }
     >
       <div className="grid gap-3">
-        {!marker.is_custom ? <Alert tone="info">This is a shared catalog marker; changes apply for everyone using this app.</Alert> : null}
+        {!marker.is_custom ? <Alert tone="info">This is a built-in test; changes apply for everyone using this app.</Alert> : null}
         <Field label="Short name">
           <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>

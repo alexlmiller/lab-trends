@@ -25,13 +25,13 @@ import { latestResult, pointsOf, RANGE_OPTIONS, seriesColor, windowFor, type Poi
 import { drawPath } from '../lib/history'
 
 const VIEW_OPTIONS: { value: ScaleMode; label: string; title: string }[] = [
-  { value: 'own', label: 'Lanes', title: 'Each marker in its own units, stacked on one time axis' },
+  { value: 'own', label: 'Lanes', title: 'Each test in its own units, stacked on one time axis' },
   {
     value: 'range',
     label: 'Normalized',
-    title: 'All markers on one chart, placed in each draw’s reported range: low limit, upper limit, then 2× and 4× the upper limit',
+    title: 'All tests on one chart, placed in each draw’s reported range: low limit, upper limit, then 2× and 4× the upper limit',
   },
-  { value: 'z', label: 'Z-score', title: 'Standard deviations from each marker’s mean in this window' },
+  { value: 'z', label: 'Z-score', title: 'Standard deviations from each test’s mean in this window' },
   { value: 'pct', label: '% change', title: 'Change from the first draw in the window' },
 ]
 
@@ -462,7 +462,7 @@ function HistoryDetail({ markers }: { markers: MarkerSeries[] }) {
 
       {marker.description ? (
         <Card>
-          <h2 className="m-0 mb-1 text-[15px] font-semibold">About this marker</h2>
+          <h2 className="m-0 mb-1 text-[15px] font-semibold">About this test</h2>
           <p className="m-0 text-[13.5px] text-ink-dim">{marker.description}</p>
         </Card>
       ) : null}

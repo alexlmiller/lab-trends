@@ -220,7 +220,7 @@ function EventModal({ event, onClose }: { event: Partial<TimelineEvent>; onClose
             ) : null}
             <MarkerPicker
               compact
-              placeholder="All markers (or pick specific ones)"
+              placeholder="All tests (or pick specific ones)"
               options={ds.markers
                 .filter((m) => !markerIds.includes(m.id))
                 .map((m) => ({ id: m.id, name: m.name, long_name: m.long_name, category: m.category, aliases: m.aliases }))}
