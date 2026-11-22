@@ -20,11 +20,11 @@ Lab Trends is a record-keeping tool. It is not a medical device and gives no med
 Everything runs inside Cloudflare's free allowances, including reading PDFs and photos. Nothing is billed on the free plans: an allowance that is used up stops that feature until it resets. Two of them shape what the app can do.
 
 - **[Workers AI](https://developers.cloudflare.com/workers-ai/platform/pricing/) gives 10,000 Neurons a day.** Reading a report of 40 results uses about 100, and one of 90 results about 250. When the day's allowance is gone, a PDF or photo import stops with a message saying so, and works again after midnight UTC. Spreadsheets and results you type in use none.
-- **[Workers Free](https://developers.cloudflare.com/workers/platform/limits/#cpu-time) allows 10 ms of CPU per request,** and Cloudflare lets a Worker run over now and then. Imports do run over: turning a PDF into text took 50 to 450 ms in testing, and a 5,000-row spreadsheet 90 ms. On a free account these all imported: PDFs of 1 to 33 pages, a 2.4 MB photo, a 5,000-row spreadsheet. Cloudflare does not say how much running over it allows, so heavy use may be stopped. An import that fails with "Reading this file did not finish" is the sign.
+- **[Workers Free](https://developers.cloudflare.com/workers/platform/limits/#cpu-time) allows 10 ms of CPU per request,** and Cloudflare lets a Worker run over now and then. Imports do run over: in testing, turning a PDF into text took 50 ms for one page and 1.4 seconds for 99, and a 5,000-row spreadsheet 90 ms. On a free account these all imported: PDFs of 1 to 99 pages, a 2.4 MB photo, a 5,000-row spreadsheet. Cloudflare does not say how much running over it allows, so heavy use may be stopped. An import that fails with "Reading this file did not finish" is the sign.
 
 The [Workers Paid plan](https://developers.cloudflare.com/workers/platform/pricing/) ($5 a month) lifts both and bills by use past its own allowances: [Workers, D1 and Queues](https://developers.cloudflare.com/workers/platform/pricing/), [R2](https://developers.cloudflare.com/r2/pricing/), [Workers AI](https://developers.cloudflare.com/workers-ai/platform/pricing/).
 
-Reading takes about 15 seconds for a short report and a few minutes for a long one. AI Gateway is not needed.
+Reading takes about 15 seconds for a short report, a minute or two for one of 40 to 90 results, and 10 minutes for 99 pages. AI Gateway is not needed.
 
 ## Deploy your own
 

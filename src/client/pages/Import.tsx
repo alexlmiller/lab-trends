@@ -500,7 +500,7 @@ function CandidateCard({
         </div>
       </div>
       <div className="grid gap-3 p-4">
-        {c.status === 'queued' || c.status === 'processing' ? <Spinner label={c.status === 'queued' ? 'Waiting to be read…' : 'Reading the report… this can take a minute'} /> : null}
+        {c.status === 'queued' || c.status === 'processing' ? <Spinner label={c.status === 'queued' ? 'Waiting to be read…' : 'Reading the report… a minute or two, and longer for a long PDF'} /> : null}
         {c.status === 'failed' ? (
           <Alert tone="error">
             {c.error ?? 'Extraction failed'}
