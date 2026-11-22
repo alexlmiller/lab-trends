@@ -2,9 +2,28 @@ import { describe, expect, it } from 'vitest'
 import type { ExtractedPanel, ExtractionDocument } from '../src/shared/types'
 import { chunkPages, denseLength, mergePanels, splitText } from '../src/worker/chunking'
 import { finishDocument, readPages } from '../src/worker/extraction'
+import { isPlanRefusal, isTransient } from '../src/worker/lib'
 import { annotateDocument, nearDuplicate, type SavedByDate } from '../src/worker/resolve'
 
 const row = (raw_name: string, raw_value: string, marker_id?: string) => ({ raw_name, raw_value, ...(marker_id ? { marker_id } : {}) })
+
+describe('model errors', () => {
+  // The text Workers AI returns on the Workers Free plan for a model that needs Workers Paid.
+  const refused = new Error('5035: Model @cf/example/model is not available on the Workers Free plan. Upgrade to access this model: https://dash.cloudflare.com/?to=/:account/workers/plans')
+
+  it('does not retry a model the plan does not offer', () => {
+    expect(isPlanRefusal(refused)).toBe(true)
+    expect(isTransient(refused)).toBe(false)
+  })
+
+  it('still retries capacity, rate and upstream errors', () => {
+    for (const message of ['3040: Capacity temporarily exceeded', '429 Too Many Requests', 'InferenceUpstreamError: 503', 'Network connection lost', 'The operation timed out']) {
+      expect(isTransient(new Error(message))).toBe(true)
+      expect(isPlanRefusal(new Error(message))).toBe(false)
+    }
+    expect(isTransient(new Error('Uploaded file is missing'))).toBe(false)
+  })
+})
 
 describe('chunking', () => {
   it('packs whole pages under the budget', () => {
