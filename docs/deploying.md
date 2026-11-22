@@ -4,14 +4,22 @@ The short version is in the [README](../README.md#deploy-your-own). This page ha
 
 ## What you need
 
-- **A Cloudflare account.** [Sign up](https://dash.cloudflare.com/sign-up) if you don't have one. The free plan covers everything except PDF and photo import.
+- **A Cloudflare account.** [Sign up](https://dash.cloudflare.com/sign-up) if you don't have one. The free plans cover everything, including reading PDFs and photos.
 - **R2 turned on, before you deploy.** In the dashboard go to **Storage & databases > R2 > Overview** and finish the checkout. Cloudflare asks for a payment method even on the free plan, but the first 10 GB are free and this app stays within that. Cloudflare won't create the storage bucket until R2 is on.
-- **Workers Paid ($5/month) to import PDFs and photos.** The model that reads them [isn't offered on the free plan](https://developers.cloudflare.com/workers-ai/platform/pricing/). Without it you can still import spreadsheets and type results in.
 - **A GitHub or GitLab account** for the deploy button, or **Node.js 22.12+ and git** to deploy from a terminal.
 
 Sign-in is [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/), which is free. You turn it on during the deploy, so there's nothing to set up ahead of time.
 
-Past the free allowances Cloudflare bills by use: [Workers, D1 and Queues](https://developers.cloudflare.com/workers/platform/pricing/), [R2](https://developers.cloudflare.com/r2/pricing/), [Workers AI](https://developers.cloudflare.com/workers-ai/platform/pricing/).
+### What the free plans allow
+
+Nothing is billed on the free plans. An allowance that's used up stops that feature until it resets. Two of them shape what the app can do:
+
+- **[Workers AI](https://developers.cloudflare.com/workers-ai/platform/pricing/) gives 10,000 Neurons a day.** Reading a report of 40 results uses about 100, and one of 90 results about 250, so that's dozens of reports a day. When the allowance is gone, a PDF or photo import stops with a message saying so, and works again after midnight UTC. Spreadsheets and results you type in use none.
+- **[Workers Free](https://developers.cloudflare.com/workers/platform/limits/#cpu-time) allows 10 ms of CPU per request,** and Cloudflare lets a Worker run over now and then. Imports do run over: in testing, turning a PDF into text took 50 ms for one page and 1.4 seconds for 99, and a 5,000-row spreadsheet 90 ms. On a free account these all imported: PDFs of 1 to 99 pages, a 2.4 MB photo, a 5,000-row spreadsheet. Cloudflare doesn't say how much running over it allows, so heavy use may be stopped. An import that fails with "Reading this file did not finish" is the sign.
+
+Reading takes about 15 seconds for a short report, a minute or two for one of 40 to 90 results, and 10 minutes for 99 pages.
+
+[Workers Paid](https://developers.cloudflare.com/workers/platform/pricing/) ($5/month) lifts both limits and bills by use past its own allowances: [Workers, D1 and Queues](https://developers.cloudflare.com/workers/platform/pricing/), [R2](https://developers.cloudflare.com/r2/pricing/), [Workers AI](https://developers.cloudflare.com/workers-ai/platform/pricing/).
 
 ## With the deploy button
 
@@ -73,7 +81,7 @@ You need to add them in two places:
 1. **Cloudflare:** allow their email address in the policy on the Worker's Access application (**Zero Trust > Access controls > Policies**).
 2. **Lab Trends:** **Settings > People with access > Add someone by email**.
 
-Everyone with access can see and change every person's results. There are no per-person permissions.
+Everyone with access can see and change every person's results. There are no per-person permissions. Only the owner can see the list of people, change it, or delete a person.
 
 ## Updating
 
@@ -85,3 +93,5 @@ git push
 ```
 
 Cloudflare rebuilds and redeploys on push and applies any new migrations first. If you deployed from a terminal, run `git pull && npm install && npm run deploy` instead.
+
+When an update changes how results are read, the app brings your saved results up to date by itself over the first few requests after the deploy: numbers, ranges and flags are worked out again from the text each result was saved with. Nothing you entered is changed.

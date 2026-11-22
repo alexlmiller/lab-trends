@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { dayNumber, formatDate, parseLooseDate } from '../src/shared/dates'
 import { normalizeAlias } from '../src/shared/markers'
-import { deriveResultFields, parseLabValue, parseReferenceRange, rangeStatus } from '../src/shared/semantics'
+import { deriveResultFields, parseLabValue, parseReferenceRange, resultStatus } from '../src/shared/semantics'
 import { correlation, pairSeries, slopePerYear, spearman } from '../src/shared/stats'
 import { parseCsv, sheetsToDocument } from '../src/shared/tabular'
 
@@ -26,7 +26,7 @@ describe('semantics', () => {
     expect(deriveResultFields('11', '3.8-10.8', null)).toMatchObject({ lab_flag: 'high', flag_source: 'inferred' })
     expect(deriveResultFields('5', '3.8-10.8', 'L')).toMatchObject({ lab_flag: 'low', flag_source: 'reported' })
     expect(deriveResultFields('<0.3', '<3.0', null)).toMatchObject({ lab_flag: null, comparator: '<' })
-    expect(rangeStatus(2, 3, 10, null)).toBe('low')
+    expect(resultStatus({ value_numeric: 2, ref_low: 3, ref_high: 10, lab_flag: null })).toBe('low')
   })
   it('normalizes aliases', () => {
     expect(normalizeAlias('Ferritin, Serum')).toBe('ferritin')

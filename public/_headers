@@ -8,3 +8,7 @@
   X-Robots-Tag: noindex, nofollow
   Cross-Origin-Opener-Policy: same-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+
+# Built files carry a hash of their content in the name, so a browser can keep them for good.
+/assets/*
+  Cache-Control: max-age=31536000, immutable

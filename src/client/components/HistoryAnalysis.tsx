@@ -7,7 +7,8 @@ import { correlationFor } from '../lib/correlate'
 import { formatNumber, formatR, formatSigned } from '../lib/format'
 import { resultChange } from '../lib/report'
 import { numericUnitKey } from '../../shared/units'
-import { pointsOf, statusOf } from '../lib/series'
+import { resultStatus } from '../../shared/semantics'
+import { pointsOf } from '../lib/series'
 import { cx, linkClass } from './ui'
 
 export function HistoryAnalysis({
@@ -45,7 +46,7 @@ export function HistoryAnalysis({
           const values = units.size === 1 ? points.map((p) => p.value) : []
           const slope = values.length >= 3 ? slopePerYear(points) : null
           const unit = values.length ? points[0].units : null
-          const ranged = results.map(statusOf).filter((status) => status !== 'unknown')
+          const ranged = results.map(resultStatus).filter((status) => status !== 'unknown')
           const reading = (r: typeof last) =>
             r ? [r.raw_value, r.raw_units, '·', formatDate(r.draw_date)].filter(Boolean).join(' ') : '—'
           return (

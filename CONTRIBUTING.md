@@ -25,6 +25,11 @@ npm run check           # typecheck, tests, build
 npm run check:neutral   # no account IDs, domains or email addresses committed
 ```
 
+The tests run the API against Node's built-in SQLite with the real migrations (`test/helpers.ts`), so they need Node 22.13 or newer. Two of them are worth knowing before you start:
+
+- `test/parsers.test.ts` is the table of what lab reports print and what it means. Add the case there before changing a parser.
+- `test/queries.test.ts` fails when a statement the app runs often reads a whole table or sorts its rows. Add new hot statements to it.
+
 For UI changes, also look at `/`, `/history?m=mk_crp`, `/correlations`, `/grid`, `/import` and `/settings` with the sample data loaded.
 
 [AGENTS.md](AGENTS.md) has the rules that aren't obvious from the code: keeping the repo account-neutral, how sign-in must fail closed, never logging health data, keeping values exactly as reported, and so on. They apply to people as well as coding agents. [docs/how-it-works.md](docs/how-it-works.md) covers the architecture.

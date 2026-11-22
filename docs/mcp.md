@@ -18,11 +18,13 @@ To poke at it directly, run `npx @modelcontextprotocol/inspector@latest` with th
 
 - **Start here:** `get_overview`.
 - **Read:** people, tests, test history, draws, correlations, events, watchlist, and `compare_around_event`.
-- **Write:** events (including periods with a note each; `add_periods`, `close_ongoing_on`), draw notes and tags (`update_draw`), the watchlist, targets, result corrections, and new results through `draft_results`, then `commit_results` or `discard_draft`.
+- **Write:** events (including periods with a note each; `add_periods`, `close_ongoing_on`, `delete_event`), draw notes and tags (`update_draw`), the watchlist, targets, result corrections, and new results through `draft_results`, then `commit_results` or `discard_draft`.
 - **Prompts:** `review_latest_results`, `prepare_visit_summary`, `treatment_response`.
 
 ## Good to know
 
-- Edits go through the same checks as the web app and show up in the revision history as `<email> (via MCP)`.
-- The assistant can't delete a test or change who has access. Those are web app only. `delete_result` needs `confirm: true`.
 - Whatever the assistant reads is sent to the company that runs it.
+- What it saves or changes goes through the same checks as the web app and is recorded as `<email> (via MCP)`.
+- It can delete results and events, and those deletes are permanent. `delete_result` needs `confirm: true`.
+- It can't delete a test, a draw or a person, or change who has access. Those are web app only.
+- Text inside your records, such as a test name or a note, is treated as data. The server tells the assistant not to follow instructions found there.

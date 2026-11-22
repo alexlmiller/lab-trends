@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { formatDate } from '../../shared/dates'
-import type { MarkerSeries, Result } from '../../shared/types'
+import type { MarkerSeries, PersonalTarget, Result } from '../../shared/types'
+import { useAction } from '../lib/action'
 import { api } from '../lib/api'
 import { useDataset } from '../lib/data'
 import { formatNumber, plural } from '../lib/format'
 import { resultChange } from '../lib/report'
-import { statusOf } from '../lib/series'
+import { resultStatus, statusTone } from '../../shared/semantics'
 import { DeleteMarkerModal } from './DeleteMarker'
 import { ResultEditModal } from './ResultEdit'
 import { Alert, Button, cx, Field, inputClass, SectionHeader, StatusBadge } from './ui'
@@ -47,7 +48,7 @@ export function TestRecord({ marker }: { marker: MarkerSeries }) {
               {[...marker.results].reverse().map((r, i, arr) => {
                 const before = arr[i + 1]
                 const change = resultChange(before, r)
-                const st = statusOf(r)
+                const st = statusTone(resultStatus(r))
                 return (
                   <tr key={r.id} className="border-t border-line hover:bg-elevated">
                     <td className="py-1.5 pr-3 whitespace-nowrap">
@@ -73,7 +74,7 @@ export function TestRecord({ marker }: { marker: MarkerSeries }) {
                     <td data-label="Flag" className="py-1.5 pr-3">
                       {r.lab_flag ? (
                         <span title={r.flag_source === 'inferred' ? 'Inferred from the reported range' : 'Flagged on the report'}>
-                          <StatusBadge status={st === 'unknown' ? 'high' : st}>{r.lab_flag}</StatusBadge>
+                          <StatusBadge status={st ?? 'high'}>{r.lab_flag}</StatusBadge>
                           {r.flag_source === 'inferred' ? <span className="ml-1 text-[11px] text-ink-faint">inferred</span> : null}
                         </span>
                       ) : null}
@@ -130,26 +131,14 @@ export function TargetEditor({ marker }: { marker: MarkerSeries }) {
   const [low, setLow] = useState(marker.target?.target_low?.toString() ?? '')
   const [high, setHigh] = useState(marker.target?.target_high?.toString() ?? '')
   const [note, setNote] = useState(marker.target?.note ?? '')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const save = async (clear = false) => {
-    setError('')
-    try {
-      setBusy(true)
-      await api.put(
-        `/subjects/${ds.subjectId}/targets/${marker.id}`,
-        clear
-          ? {}
-          : { target_low: low === '' ? null : Number(low), target_high: high === '' ? null : Number(high), note: note || null },
-      )
-      await ds.reload()
+  const { busy, error, run } = useAction()
+  const save = (clear = false) =>
+    run(async () => {
+      const body = clear ? {} : { target_low: low === '' ? null : Number(low), target_high: high === '' ? null : Number(high), note: note || null }
+      const { target } = await api.put<{ target: PersonalTarget | null }>(`/subjects/${ds.subjectId}/targets/${marker.id}`, body)
+      ds.patch((d) => ({ ...d, markers: d.markers.map((m) => (m.id === marker.id ? { ...m, target } : m)) }))
       setOpen(false)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
+    })
   const t = marker.target
   return (
     <div className="mt-4 border-t border-line pt-3">

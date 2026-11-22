@@ -121,9 +121,9 @@ export function Stat({ label, children, sub }: { label: string; children: ReactN
 }
 
 /** Collapsible section with a styled summary (no native disclosure triangle). */
-export function Disclosure({ title, meta, children, defaultOpen, onToggle, className }: { title: ReactNode; meta?: ReactNode; children: ReactNode; defaultOpen?: boolean; onToggle?: (open: boolean) => void; className?: string }) {
+export function Disclosure({ title, meta, children, onToggle, className }: { title: ReactNode; meta?: ReactNode; children: ReactNode; onToggle?: (open: boolean) => void; className?: string }) {
   return (
-    <details open={defaultOpen} onToggle={(e) => onToggle?.(e.currentTarget.open)} className={cx('group rounded-lg border border-line bg-surface', className)}>
+    <details onToggle={(e) => onToggle?.(e.currentTarget.open)} className={cx('group rounded-lg border border-line bg-surface', className)}>
       <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 select-none [&::-webkit-details-marker]:hidden">
         <Icon name="chevron-right" className="shrink-0 text-ink-faint transition-transform group-open:rotate-90" />
         <span className="text-[14px] font-semibold text-ink">{title}</span>
@@ -139,13 +139,11 @@ export function Segmented<T extends string>({
   options,
   onChange,
   label,
-  size = 'sm',
 }: {
   value: T
   options: { value: T; label: string; title?: string }[]
   onChange: (value: T) => void
   label: string
-  size?: 'sm' | 'md'
 }) {
   return (
     <div role="radiogroup" aria-label={label} className="inline-flex max-w-full overflow-x-auto rounded-md border border-line-strong bg-sunken p-0.5 [scrollbar-width:none]">
@@ -158,8 +156,7 @@ export function Segmented<T extends string>({
           title={o.title}
           onClick={() => onChange(o.value)}
           className={cx(
-            'shrink-0 rounded-[5px] px-2.5 font-medium whitespace-nowrap transition-colors',
-            size === 'sm' ? 'h-6 text-[12px]' : 'h-8 text-[13px]',
+            'h-6 shrink-0 rounded-[5px] px-2.5 text-[12px] font-medium whitespace-nowrap transition-colors',
             o.value === value ? 'bg-surface text-ink shadow-sm' : 'text-ink-dim hover:text-ink',
           )}
         >

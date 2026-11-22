@@ -2,16 +2,15 @@
 // switcher, the range viewer, a result row with its expanded detail, and the
 // previous → this draw comparison. Status is shown only when a value is
 // outside its reported range, so anomalies stand out.
-import { useState } from 'react'
 import { formatDate } from '../../shared/dates'
-import { parseReferenceRange } from '../../shared/semantics'
+import { isOutOfRange, parseReferenceRange, relativeToReference, resultStatus, statusTone } from '../../shared/semantics'
 import { numericUnitKey } from '../../shared/units'
 import type { MarkerSeries, Panel, Result } from '../../shared/types'
-import { api } from '../lib/api'
-import { useDataset } from '../lib/data'
+import { useAction } from '../lib/action'
+import { useDataset, useSavePreferences } from '../lib/data'
 import { formatPct } from '../lib/format'
 import { drawHistoryPath, drawPath } from '../lib/history'
-import { priorResult, relativeToReference, resultChange } from '../lib/report'
+import { priorResult, resultChange } from '../lib/report'
 import { Icon } from './Icon'
 import { SelectField } from './SelectField'
 import { Button, ButtonAnchor, ButtonLink, cx, StatusBadge } from './ui'
@@ -46,15 +45,10 @@ export function DrawSwitcher({ panels, value, onChange, label = 'Report' }: { pa
 /** HIGH/LOW for out-of-range values only; nothing for in-range or unranged results. */
 export function OutOfRange({ result }: { result: Result }) {
   if (result.lab_flag === 'critical') return <StatusBadge status="critical" />
-  const direction = relativeToReference(result)
-  if (direction === 'high' || direction === 'low') return <StatusBadge status={direction} />
-  if (result.lab_flag === 'abnormal') return <StatusBadge status="high">Flagged</StatusBadge>
+  const status = resultStatus(result)
+  if (status === 'high' || status === 'low') return <StatusBadge status={status} />
+  if (status === 'flagged') return <StatusBadge status="high">Flagged</StatusBadge>
   return null
-}
-
-export function isOutOfRange(r: Result): boolean {
-  const d = relativeToReference(r)
-  return d === 'high' || d === 'low' || r.lab_flag === 'critical' || r.lab_flag === 'abnormal'
 }
 
 /**
@@ -129,8 +123,8 @@ export function ReferenceGauge({ result, previous, size = 'sm', centered }: { re
 /** One result in a report list: name, value, range viewer, out-of-range status; expands in place. */
 export function ResultRow({ marker, result, open, onToggle, onEdit, showDate, starred }: { marker: MarkerSeries; result: Result; open: boolean; onToggle: () => void; onEdit?: () => void; showDate?: boolean; starred?: boolean }) {
   const previous = priorResult(marker, { id: result.panel_id, draw_date: result.draw_date, draw_time: result.draw_time ?? null } as Panel)
-  const direction = relativeToReference(result)
-  const out = isOutOfRange(result)
+  const tone = statusTone(resultStatus(result))
+  const out = tone !== null
   return (
     <div className={cx('border-b border-line last:border-b-0', open && 'bg-elevated')}>
       <button
@@ -147,7 +141,7 @@ export function ResultRow({ marker, result, open, onToggle, onEdit, showDate, st
           </span>
           {showDate ? <span className="block text-[12px] text-ink-faint">{formatDate(result.draw_date)}</span> : null}
         </span>
-        <span className={cx('text-left text-[14px] font-semibold whitespace-nowrap tabular', direction === 'high' && 'text-high', direction === 'low' && 'text-low')}>
+        <span className={cx('text-left text-[14px] font-semibold whitespace-nowrap tabular', tone === 'high' && 'text-high', tone === 'low' && 'text-low')}>
           {result.raw_value} <span className="text-[12px] font-normal text-ink-faint">{result.raw_units}</span>
         </span>
         <span className="col-span-2 row-start-2 flex min-w-0 items-center gap-3 md:col-span-1 md:row-start-auto md:contents">
@@ -171,22 +165,20 @@ export function ResultComparison({
   labels = ['Previous', 'This draw'],
   missing = ['No earlier result', 'Not tested'],
   drawDate,
-  showPercent = true,
 }: {
   before?: Result
   after?: Result
   labels?: [string, string]
   missing?: [string, string]
   drawDate?: string
-  showPercent?: boolean
 }) {
   const change = resultChange(before, after)
-  const pct = showPercent && change.unit && before?.value_numeric != null && before.value_numeric > 0 && after?.value_numeric != null ? formatPct(after.value_numeric / before.value_numeric - 1) : null
+  const pct = change.ratio != null ? formatPct(change.ratio) : null
   const cell = 'min-w-0 px-3 py-2.5 sm:px-4'
   return (
     <dl className="m-0 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-line tabular">
       {[before, after].map((r, i) => {
-        const d = r ? relativeToReference(r) : undefined
+        const d = r ? statusTone(resultStatus(r)) : null
         return (
           <div key={i} className={cx(cell, 'bg-surface')}>
             <dt className="text-[11.5px] text-ink-faint">{labels[i]}</dt>
@@ -265,20 +257,31 @@ export function ResultDetail({ marker, result, panel: panelProp, onEdit }: { mar
             Open draw
           </ButtonLink>
         )}
-        {panel.source_file_id ? (
-          <ButtonAnchor size="sm" variant="ghost" icon="external" href={`/api/subjects/${encodeURIComponent(ds.subjectId)}/files/${encodeURIComponent(panel.source_file_id)}`}>
-            Source report
-          </ButtonAnchor>
-        ) : null}
+        <SourceReports panel={panel} />
       </div>
     </div>
+  )
+}
+
+/** A link to each uploaded report that put results on a draw. */
+export function SourceReports({ panel }: { panel: Panel }) {
+  const ds = useDataset()
+  return (
+    <>
+      {panel.sources.map((s, i) => (
+        <ButtonAnchor key={s.file_id} size="sm" variant="ghost" icon="external" title={s.filename} href={`/api/subjects/${encodeURIComponent(ds.subjectId)}/files/${encodeURIComponent(s.file_id)}`}>
+          {panel.sources.length > 1 ? `Source report ${i + 1}` : 'Source report'}
+        </ButtonAnchor>
+      ))}
+    </>
   )
 }
 
 /** Star a test onto the watchlist (shared with All tests and the watchlist page). */
 export function FollowButton({ markerId, size = 'sm' }: { markerId: string; size?: 'sm' | 'md' }) {
   const ds = useDataset()
-  const [busy, setBusy] = useState(false)
+  const save = useSavePreferences()
+  const { busy, run } = useAction()
   const starred = ds.preferences.starred_marker_ids
   const on = starred.includes(markerId)
   return (
@@ -289,15 +292,7 @@ export function FollowButton({ markerId, size = 'sm' }: { markerId: string; size
       aria-pressed={on}
       title={on ? 'On watchlist' : 'Add to watchlist'}
       className={cx('max-sm:px-2', on && 'text-accent-deep')}
-      onClick={async () => {
-        setBusy(true)
-        try {
-          await api.put(`/subjects/${ds.subjectId}/preferences`, { starred_marker_ids: on ? starred.filter((id) => id !== markerId) : [...starred, markerId] })
-          await ds.reload()
-        } finally {
-          setBusy(false)
-        }
-      }}
+      onClick={() => run(() => save({ starred_marker_ids: on ? starred.filter((id) => id !== markerId) : [...starred, markerId] }))}
     >
       {!busy && <Icon name="star" filled={on} className={on ? 'text-star' : undefined} />}
       <span className="max-sm:sr-only">{on ? 'On watchlist' : 'Watch'}</span>

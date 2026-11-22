@@ -30,7 +30,9 @@
         "queue": "lab-trends-extractions",
         "max_batch_size": 1,
         "max_batch_timeout": 1,
-        "max_retries": 4
+        "max_retries": 4,
+        // Each file already reads several parts at once; two files at a time stays inside Workers AI rate limits.
+        "max_concurrency": 2
       }
     ]
   },

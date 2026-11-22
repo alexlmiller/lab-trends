@@ -19,13 +19,6 @@ export function mean(values: number[]): number {
   return values.reduce((s, v) => s + v, 0) / (values.length || 1)
 }
 
-export function median(values: number[]): number {
-  if (!values.length) return NaN
-  const s = [...values].sort((a, b) => a - b)
-  const mid = Math.floor(s.length / 2)
-  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2
-}
-
 export function stdev(values: number[]): number {
   if (values.length < 2) return 0
   const m = mean(values)

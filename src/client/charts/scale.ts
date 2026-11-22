@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { dateFromDay, dayNumber } from '../../shared/dates'
+import { dateFromDay, dayNumber, MONTHS } from '../../shared/dates'
 
 export function useElementWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
   const ref = useRef<T>(null)
@@ -89,8 +89,6 @@ export function shouldAutoLog(values: number[]): boolean {
   if (values.length < 3 || values.some((v) => v <= 0)) return false
   return Math.max(...values) / Math.min(...values) >= 20
 }
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** Calendar-aligned ticks (month starts) for a day-number domain. */
 export type TimeTick = { day: number; label: string; /** January 1st: drawn bolder so years stand out. */ year: boolean }

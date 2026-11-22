@@ -4,6 +4,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { Alert, Button, cx, Eyebrow, Field, inputClass, linkClass, PageHeader, Spinner } from '../components/ui'
 import { SelectField } from '../components/SelectField'
 import { SetupScreen } from '../components/SetupScreen'
+import { useAction } from '../lib/action'
 import { api, DEMO_READ_ONLY_EVENT } from '../lib/api'
 import { DataProvider, useData } from '../lib/data'
 
@@ -201,23 +202,18 @@ function Shell() {
 
 function FirstPerson() {
   const [name, setName] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, run } = useAction()
   return (
     <div className="mx-auto max-w-md py-16">
       <PageHeader title="Whose results are these?" description="Create a person to start importing lab results. You can add more people later in settings." />
       <form
         className="grid gap-3"
-        onSubmit={async (e) => {
+        onSubmit={(e) => {
           e.preventDefault()
-          setBusy(true)
-          try {
+          void run(async () => {
             await api.post('/subjects', { display_name: name })
             window.location.reload()
-          } catch (err) {
-            setError((err as Error).message)
-            setBusy(false)
-          }
+          })
         }}
       >
         <Field label="Name">
