@@ -19,4 +19,4 @@ Known and accepted: a deployment that nobody has signed in to yet can be claimed
 
 ## Your own deployment
 
-Its security rests on your Cloudflare account. Turn on two-factor authentication there, keep the Worker behind Access, and keep the copy you deployed up to date ([README, Updating](README.md#updating)).
+Its security rests on your Cloudflare account. Turn on two-factor authentication there, keep the Worker behind Access, and keep the copy you deployed up to date ([Updating](docs/deploying.md#updating)).

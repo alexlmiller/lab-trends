@@ -1,6 +1,6 @@
 # Running your copy
 
-Settings, fixing sign-in, backups and removing a deployment. Deploying and updating are in the [README](../README.md).
+Settings, fixing sign-in, backups and removing a deployment. Deploying and updating: [deploying.md](deploying.md).
 
 ## Settings
 
@@ -22,7 +22,7 @@ Cloudflare also accepts prepaid [AI Gateway credits](https://developers.cloudfla
 
 | The app says | Cause | Fix |
 |---|---|---|
-| Turn on sign-in | The request didn't pass through Access | [Turn on sign-in](../README.md#turn-on-sign-in) |
+| Turn on sign-in | The request didn't pass through Access | [Turn on sign-in](deploying.md#turn-on-sign-in) |
 | Locked to a different sign-in | The Access application was recreated, the app moved accounts, or someone else signed in first on a new deployment | Clear the lock (below), reload, sign in |
 | You're not on the list | Access let the address in, but the app's list doesn't include it | The owner adds it in Settings |
 | Almost there | Migrations haven't run | `npm run db:migrate:remote`, or deploy again |

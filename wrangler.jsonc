@@ -7,7 +7,7 @@
 
   // Nothing account-specific belongs in this file: no account ID, domain, resource IDs
   // or email addresses. Wrangler finds or creates the database, bucket and queue by the
-  // names below. Sign-in is Cloudflare Access on the Worker (README: "Turn on sign-in");
+  // names below. Sign-in is Cloudflare Access on the Worker (docs/deploying.md: "Turn on sign-in");
   // until it is on, the API refuses every request.
   "workers_dev": true,
   "preview_urls": false,
