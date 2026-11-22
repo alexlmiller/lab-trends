@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAction } from '../lib/action'
 import { api } from '../lib/api'
 import { plural } from '../lib/format'
 import { Alert, Button, Modal } from './ui'
@@ -20,8 +21,7 @@ export function DeleteMarkerModal({
   onDeleted: () => void
 }) {
   const [hide, setHide] = useState(true)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, run } = useAction()
   return (
     <Modal
       title={`Delete ${marker.name}?`}
@@ -34,14 +34,7 @@ export function DeleteMarkerModal({
             icon="trash"
             busy={busy}
             onClick={async () => {
-              setBusy(true)
-              try {
-                await api.del(`/subjects/${subjectId}/markers/${marker.id}?hide=${hide ? '1' : '0'}`)
-                onDeleted()
-              } catch (e) {
-                setError((e as Error).message)
-                setBusy(false)
-              }
+              if (await run(() => api.del(`/subjects/${subjectId}/markers/${marker.id}?hide=${hide ? '1' : '0'}`))) onDeleted()
             }}
           >
             Delete {plural(resultCount, 'result')}
@@ -51,7 +44,7 @@ export function DeleteMarkerModal({
     >
       <div className="grid gap-3 text-[13.5px]">
         <p className="m-0">
-          This removes {marker.name} and its {plural(resultCount, 'result')} from {personName}’s charts, along with any target set for it. Draws left with no other results are removed too. A copy of each result is kept in the revision log.
+          This deletes {marker.name} and its {plural(resultCount, 'result')} from {personName}’s record for good, along with any target set for it. Draws left with no other results are deleted too. It cannot be undone.
         </p>
         <label className="flex items-start gap-2">
           <input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]" />

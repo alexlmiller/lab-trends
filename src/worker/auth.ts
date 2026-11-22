@@ -84,15 +84,37 @@ function teamHost(value: string): string {
 }
 
 export type InstanceRow = { access_team_domain: string; access_aud: string; owner_email: string; claimed_at: string }
+type Person = { email: string; added_at: string; added_by: string | null }
+
+/**
+ * Who is trusted is read on every request, so an isolate keeps what it read
+ * for a few seconds. A person removed from the list can therefore still be let
+ * in for that long by an isolate that has not looked again; the isolate that
+ * made the change forgets its copy at once. An unclaimed deployment is never
+ * remembered, so the first sign-in always sees the database as it is.
+ */
+const TRUST_TTL_MS = 15_000
+let trust: { row: InstanceRow; people: Person[]; expires: number } | null = null
+
+export function forgetTrust() {
+  trust = null
+}
 
 /** What this deployment trusts right now: settings win over what the first sign-in recorded. */
 export async function instanceState(env: Env) {
   const s = settings(env)
-  const [instance, people] = await env.DB.batch([
-    env.DB.prepare('SELECT access_team_domain, access_aud, owner_email, claimed_at FROM instance WHERE id = 1'),
-    env.DB.prepare('SELECT email, added_at, added_by FROM allowed_users ORDER BY added_at'),
-  ])
-  const row = (instance.results[0] as InstanceRow | undefined) ?? null
+  let row: InstanceRow | null
+  let list: Person[]
+  if (trust && trust.expires > Date.now()) ({ row, people: list } = trust)
+  else {
+    const [instance, people] = await env.DB.batch([
+      env.DB.prepare('SELECT access_team_domain, access_aud, owner_email, claimed_at FROM instance WHERE id = 1'),
+      env.DB.prepare('SELECT email, added_at, added_by FROM allowed_users ORDER BY added_at'),
+    ])
+    row = (instance.results[0] as InstanceRow | undefined) ?? null
+    list = people.results as Person[]
+    trust = row ? { row, people: list, expires: Date.now() + TRUST_TTL_MS } : null
+  }
   const team = s.ACCESS_TEAM_DOMAIN?.trim()
   const aud = s.ACCESS_AUD?.trim()
   const configured = team && aud ? { team: teamHost(team), aud } : null
@@ -103,7 +125,7 @@ export async function instanceState(env: Env) {
     halfConfigured: Boolean(team) !== Boolean(aud),
     trusted: configured ?? (row ? { team: row.access_team_domain, aud: row.access_aud } : null),
     ownerSetting: s.OWNER_EMAIL?.trim().toLowerCase() || null,
-    people: people.results as { email: string; added_at: string; added_by: string | null }[],
+    people: list,
   }
 }
 

@@ -1,7 +1,7 @@
 // Time-spaced sparkline with the latest reference band. Points are placed by
 // date, not index, so long gaps read as gaps.
 import { useMemo } from 'react'
-import type { Point } from '../lib/series'
+import { statusColor, type Point } from '../lib/series'
 
 export function Sparkline({ points, domain, width = 132, height = 36, color = 'var(--color-s1)' }: { points: Point[]; domain: [number, number]; width?: number; height?: number; color?: string }) {
   const geo = useMemo(() => {
@@ -29,7 +29,7 @@ export function Sparkline({ points, domain, width = 132, height = 36, color = 'v
   const { pts, last, x, y } = geo
   const bandTop = geo.refHigh != null ? Math.max(0, y(geo.refHigh)) : 0
   const bandBottom = geo.refLow != null ? Math.min(height, y(geo.refLow)) : height
-  const lastColor = last.status === 'high' ? 'var(--color-high)' : last.status === 'low' ? 'var(--color-low)' : color
+  const lastColor = statusColor(last.status) ?? color
   return (
     <svg width={width} height={height} aria-hidden className="block overflow-visible">
       {geo.refLow != null || geo.refHigh != null ? <rect x={0} width={width} y={bandTop} height={Math.max(0, bandBottom - bandTop)} fill="var(--color-band)" opacity={0.55} rx={2} /> : null}
@@ -37,8 +37,8 @@ export function Sparkline({ points, domain, width = 132, height = 36, color = 'v
         <path d={pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.day).toFixed(1)},${y(p.value).toFixed(1)}`).join('')} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" opacity={0.85} />
       ) : null}
       {pts.map((p) =>
-        p.status === 'high' || p.status === 'low' ? (
-          <circle key={p.resultId} cx={x(p.day)} cy={y(p.value)} r={1.8} fill={p.status === 'high' ? 'var(--color-high)' : 'var(--color-low)'} />
+        statusColor(p.status) ? (
+          <circle key={p.resultId} cx={x(p.day)} cy={y(p.value)} r={1.8} fill={statusColor(p.status)!} />
         ) : null,
       )}
       <circle cx={x(last.day)} cy={y(last.value)} r={3} fill={lastColor} stroke="var(--color-surface)" strokeWidth={1.25} />

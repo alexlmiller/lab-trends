@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
-import type { Dataset, Marker, MarkerSeries, Me } from '../../shared/types'
+import type { Dataset, Marker, MarkerSeries, Me, Preferences } from '../../shared/types'
 import { api, ApiError } from './api'
 
 /** The app is not usable yet: sign-in is off, locked to another Access application, or this person is not on the list. */
@@ -17,6 +17,8 @@ type DataState = {
   loading: boolean
   error: string | null
   reload: () => Promise<void>
+  /** Show a change the server has already saved, without fetching everything again. */
+  patch: (change: (dataset: Dataset) => Dataset) => void
   catalog: Marker[] | null
   loadCatalog: () => Promise<Marker[]>
 }
@@ -102,11 +104,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return list
   }, [])
 
+  const patch = useCallback((change: (dataset: Dataset) => Dataset) => setDataset((d) => (d ? change(d) : d)), [])
+
   const markersById = useMemo(() => new Map((dataset?.markers ?? []).map((m) => [m.id, m])), [dataset])
 
   const value = useMemo(
-    () => ({ me, gate, subjectId, setSubjectId, dataset, markersById, loading, error, reload, catalog, loadCatalog }),
-    [me, gate, subjectId, setSubjectId, dataset, markersById, loading, error, reload, catalog, loadCatalog],
+    () => ({ me, gate, subjectId, setSubjectId, dataset, markersById, loading, error, reload, patch, catalog, loadCatalog }),
+    [me, gate, subjectId, setSubjectId, dataset, markersById, loading, error, reload, patch, catalog, loadCatalog],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
@@ -118,10 +122,25 @@ export function useData(): DataState {
 }
 
 /** Dataset is guaranteed loaded inside pages rendered by the layout. */
-export function useDataset(): Dataset & { markersById: Map<string, MarkerSeries>; reload: () => Promise<void>; subjectId: string } {
-  const { dataset, markersById, reload, subjectId } = useData()
+export function useDataset(): Dataset & { markersById: Map<string, MarkerSeries>; reload: () => Promise<void>; patch: DataState['patch']; subjectId: string } {
+  const { dataset, markersById, reload, patch, subjectId } = useData()
   if (!dataset || !subjectId) throw new Error('Dataset not loaded')
-  return { ...dataset, markersById, reload, subjectId }
+  return { ...dataset, markersById, reload, patch, subjectId }
+}
+
+/**
+ * Save a change to this person's preferences (watched and removed tests) and
+ * show it at once. Results did not change, so nothing else is fetched.
+ */
+export function useSavePreferences(): (change: Partial<Preferences>) => Promise<void> {
+  const { subjectId, patch } = useData()
+  return useCallback(
+    async (change) => {
+      await api.put(`/subjects/${subjectId}/preferences`, change)
+      patch((d) => ({ ...d, preferences: { ...d.preferences, ...change } }))
+    },
+    [subjectId, patch],
+  )
 }
 
 /** URL search-param state. Meaningful view changes push history entries. */

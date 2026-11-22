@@ -15,23 +15,24 @@ import { SelectField } from '../components/SelectField'
 import { TargetEditor, TestRecord } from '../components/TestRecord'
 import { BackLink, Button, ButtonLink, Card, Chip, cx, Disclosure, Empty, linkClass, PageHeader, Segmented, Stat, StatGrid } from '../components/ui'
 import { MarkerPicker } from '../components/MarkerPicker'
-import { FollowButton, isOutOfRange, OutOfRange } from '../components/ReportParts'
+import { FollowButton, OutOfRange } from '../components/ReportParts'
 import { topCorrelates } from '../lib/correlate'
 import { useDataset, useListParam, useParam, useUpdateParams } from '../lib/data'
 import { formatPct, formatR, formatSigned, plural } from '../lib/format'
-import { relativeToReference, resultChange } from '../lib/report'
+import { isOutOfRange, resultStatus, statusTone } from '../../shared/semantics'
+import { resultChange } from '../lib/report'
 import { numericUnitKey } from '../../shared/units'
 import { latestResult, pointsOf, RANGE_OPTIONS, seriesColor, windowFor, type Point } from '../lib/series'
 import { drawPath } from '../lib/history'
 
 const VIEW_OPTIONS: { value: ScaleMode; label: string; title: string }[] = [
-  { value: 'own', label: 'Lanes', title: 'Each marker in its own units, stacked on one time axis' },
+  { value: 'own', label: 'Lanes', title: 'Each test in its own units, stacked on one time axis' },
   {
     value: 'range',
     label: 'Normalized',
-    title: 'All markers on one chart, placed in each draw’s reported range: low limit, upper limit, then 2× and 4× the upper limit',
+    title: 'All tests on one chart, placed in each draw’s reported range: low limit, upper limit, then 2× and 4× the upper limit',
   },
-  { value: 'z', label: 'Z-score', title: 'Standard deviations from each marker’s mean in this window' },
+  { value: 'z', label: 'Z-score', title: 'Standard deviations from each test’s mean in this window' },
   { value: 'pct', label: '% change', title: 'Change from the first draw in the window' },
 ]
 
@@ -163,18 +164,15 @@ function HistoryDetail({ markers }: { markers: MarkerSeries[] }) {
   const lanes = view === 'own'
   const setView = (v: ScaleMode) => update({ layout: v === 'own' ? 'stacked' : 'overlay', scale: v === 'own' ? null : v })
   const latest = latestResult(marker)
-  const status = latest ? (relativeToReference(latest) ?? 'unknown') : 'unknown'
+  const status = statusTone(resultStatus(latest))
   const readings = marker.results.filter((r) => dayNumber(r.draw_date) >= domain[0] && dayNumber(r.draw_date) <= domain[1])
   const exact = primary.points.filter((p) => p.day >= domain[0] && p.day <= domain[1] && !p.censored)
   const slope = slopePerYear(exact)
   const prev = readings.at(-2),
     last = readings.at(-1)
   const change = resultChange(prev, last)
-  const pct =
-    change.unit && prev?.value_numeric != null && prev.value_numeric > 0 && last?.value_numeric != null
-      ? formatPct(last.value_numeric / prev.value_numeric - 1)
-      : null
-  const outside = marker.results.filter((r) => ['low', 'high'].includes(relativeToReference(r) ?? '')).length
+  const pct = change.ratio != null ? formatPct(change.ratio) : null
+  const outside = marker.results.filter(isOutOfRange).length
   const refs = [...new Set(marker.results.map((r) => r.reference_text).filter(Boolean))]
   const movers = useMemo(() => {
     const comparable = (m: MarkerSeries) => new Set(pointsOf(m).map((p) => numericUnitKey(p.units))).size === 1
@@ -442,7 +440,7 @@ function HistoryDetail({ markers }: { markers: MarkerSeries[] }) {
               ))}
             </div>
           ) : (
-            <p className="text-[13px] text-ink-faint">Needs at least 6 draws shared with another marker.</p>
+            <p className="text-[13px] text-ink-faint">Needs at least 6 draws shared with another test.</p>
           )}
         </Card>
 
@@ -462,7 +460,7 @@ function HistoryDetail({ markers }: { markers: MarkerSeries[] }) {
 
       {marker.description ? (
         <Card>
-          <h2 className="m-0 mb-1 text-[15px] font-semibold">About this marker</h2>
+          <h2 className="m-0 mb-1 text-[15px] font-semibold">About this test</h2>
           <p className="m-0 text-[13.5px] text-ink-dim">{marker.description}</p>
         </Card>
       ) : null}

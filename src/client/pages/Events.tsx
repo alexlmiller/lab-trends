@@ -6,6 +6,7 @@ import { EVENT_COLORS } from '../charts/TimeSeriesChart'
 import { Icon } from '../components/Icon'
 import { MarkerPicker } from '../components/MarkerPicker'
 import { Alert, Button, ButtonLink, Card, cx, Empty, Field, inputClass, Modal, PageHeader } from '../components/ui'
+import { useAction } from '../lib/action'
 import { api } from '../lib/api'
 import { useDataset } from '../lib/data'
 
@@ -93,20 +94,22 @@ function EventModal({ event, onClose }: { event: Partial<TimelineEvent>; onClose
     setPeriods((current) => current.map((p, i) => (i === index ? { ...p, ...patch } : p)))
   const [notes, setNotes] = useState(event.notes ?? '')
   const [markerIds, setMarkerIds] = useState<string[]>(event.marker_ids ?? [])
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, run } = useAction()
   const body = { label, kind, updated_at: event.updated_at, periods, notes, marker_ids: markerIds }
-  const run = async (fn: () => Promise<unknown>) => {
-    setBusy(true)
-    try {
-      await fn()
-      await ds.reload()
+  const path = `/subjects/${ds.subjectId}/events`
+  // The server answers with the saved event, so the timeline is updated in place rather than fetched again.
+  const save = () =>
+    run(async () => {
+      const { event: saved } = event.id ? await api.patch<{ event: TimelineEvent }>(`${path}/${event.id}`, body) : await api.post<{ event: TimelineEvent }>(path, body)
+      ds.patch((d) => ({ ...d, events: [...d.events.filter((e) => e.id !== saved.id), saved].sort((a, b) => a.start_date.localeCompare(b.start_date)) }))
       onClose()
-    } catch (e) {
-      setError((e as Error).message)
-      setBusy(false)
-    }
-  }
+    })
+  const remove = () =>
+    run(async () => {
+      await api.del(`${path}/${event.id}`)
+      ds.patch((d) => ({ ...d, events: d.events.filter((e) => e.id !== event.id) }))
+      onClose()
+    })
   return (
     <Modal
       wide
@@ -119,7 +122,7 @@ function EventModal({ event, onClose }: { event: Partial<TimelineEvent>; onClose
               variant="ghost"
               icon="trash"
               className="mr-auto"
-              onClick={() => run(() => api.del(`/subjects/${ds.subjectId}/events/${event.id}`))}
+              onClick={remove}
             >
               Delete
             </Button>
@@ -129,13 +132,7 @@ function EventModal({ event, onClose }: { event: Partial<TimelineEvent>; onClose
             variant="primary"
             busy={busy}
             disabled={!label.trim() || periods.some((p) => !p.start_date)}
-            onClick={() =>
-              run(() =>
-                event.id
-                  ? api.patch(`/subjects/${ds.subjectId}/events/${event.id}`, body)
-                  : api.post(`/subjects/${ds.subjectId}/events`, body),
-              )
-            }
+            onClick={save}
           >
             Save
           </Button>
@@ -220,7 +217,7 @@ function EventModal({ event, onClose }: { event: Partial<TimelineEvent>; onClose
             ) : null}
             <MarkerPicker
               compact
-              placeholder="All markers (or pick specific ones)"
+              placeholder="All tests (or pick specific ones)"
               options={ds.markers
                 .filter((m) => !markerIds.includes(m.id))
                 .map((m) => ({ id: m.id, name: m.name, long_name: m.long_name, category: m.category, aliases: m.aliases }))}

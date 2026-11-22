@@ -1,0 +1,22 @@
+# Dependency updates arrive as pull requests, where CI runs them, instead of
+# being picked up silently. A new release waits a week before it is proposed,
+# so a bad one has time to be noticed and withdrawn first.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      build-tools:
+        dependency-type: development
+      runtime:
+        dependency-type: production
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

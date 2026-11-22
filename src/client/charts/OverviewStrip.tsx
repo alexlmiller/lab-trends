@@ -3,7 +3,7 @@
 // outside it to jump there. The window never extends past today.
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { dateFromDay, formatDate } from '../../shared/dates'
-import { latestDay, type Point } from '../lib/series'
+import { latestDay, statusColor, type Point } from '../lib/series'
 import { timeTicks, useElementWidth } from './scale'
 
 type Props = {
@@ -138,7 +138,7 @@ export function OverviewStrip({ points, domain, extent, onChange, color = 'var(-
           <rect x={PAD_X} y={4} width={w} height={32} rx={4} fill="var(--color-sunken)" />
           <path d={path} fill="none" stroke={color} strokeWidth={1.25} opacity={0.55} />
           {points.map((p) => (
-            <circle key={p.resultId} cx={xOf(p.day)} cy={yOf(p.value)} r={1.6} fill={p.status === 'high' ? 'var(--color-high)' : p.status === 'low' ? 'var(--color-low)' : color} />
+            <circle key={p.resultId} cx={xOf(p.day)} cy={yOf(p.value)} r={1.6} fill={statusColor(p.status) ?? color} />
           ))}
           {/* Dim what is outside the window, outline what is inside. */}
           <rect x={PAD_X} y={4} width={Math.max(0, x0 - PAD_X)} height={32} fill="var(--color-surface)" opacity={0.7} />

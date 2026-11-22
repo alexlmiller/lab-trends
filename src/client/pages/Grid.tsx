@@ -4,8 +4,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { categoryLabel, sortCategories } from '../../shared/categories'
 import { activeOn } from '../../shared/events'
-import { formatDate } from '../../shared/dates'
-import { positionInRange } from '../../shared/semantics'
+import { formatDate, MONTHS } from '../../shared/dates'
+import { positionInRange, resultStatus, statusTone } from '../../shared/semantics'
 import { mean, stdev } from '../../shared/stats'
 import type { MarkerSeries, Result } from '../../shared/types'
 import { EVENT_COLORS } from '../charts/TimeSeriesChart'
@@ -13,7 +13,6 @@ import { Icon } from '../components/Icon'
 import { Chip, cx, Empty, inputClass, PageHeader, Segmented } from '../components/ui'
 import { useDataset, useParam } from '../lib/data'
 import { formatPct } from '../lib/format'
-import { rangeStatus } from '../../shared/semantics'
 import { drawPath } from '../lib/history'
 
 type ColorMode = 'range' | 'history' | 'change'
@@ -58,9 +57,9 @@ export function GridPage() {
       if (q && ![m.name, m.long_name ?? '', ...(m.aliases ?? [])].some((s) => s.toLowerCase().includes(q))) return false
       return true
     })
-    const cats = sortCategories([...new Set(list.map((m) => m.category))], ds.preferences.section_order)
+    const cats = sortCategories([...new Set(list.map((m) => m.category))])
     return cats.map((c) => ({ category: c, markers: list.filter((m) => m.category === c).sort((a, b) => a.name.localeCompare(b.name)) }))
-  }, [ds.markers, ds.preferences.section_order, query, category, onlyFlagged])
+  }, [ds.markers, query, category, onlyFlagged])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -90,8 +89,8 @@ export function GridPage() {
             onChange={(v) => setColor(v)}
             options={[
               { value: 'range', label: 'Vs reference', title: 'Below range = blue, above = orange' },
-              { value: 'history', label: 'Vs own history', title: 'Standard deviations from this marker’s own mean' },
-              { value: 'change', label: 'Change', title: 'Change from the previous draw of the same marker' },
+              { value: 'history', label: 'Vs own history', title: 'Standard deviations from this test’s own mean' },
+              { value: 'change', label: 'Change', title: 'Change from the previous draw of the same test' },
             ]}
           />
           <Segmented
@@ -109,7 +108,7 @@ export function GridPage() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-56">
           <Icon name="search" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-faint" />
-          <input className={cx(inputClass, 'h-8 pl-8 text-[13px]')} placeholder="Filter markers…" value={query} onChange={(e) => setQuery(e.target.value, true)} />
+          <input className={cx(inputClass, 'h-8 pl-8 text-[13px]')} placeholder="Filter tests…" value={query} onChange={(e) => setQuery(e.target.value, true)} />
         </div>
         <Chip active={category === 'all'} onClick={() => setCategory('all')}>
           All
@@ -130,7 +129,7 @@ export function GridPage() {
           <thead>
             <tr ref={headRef}>
               <th className="sticky top-0 left-0 z-30 min-w-[190px] border-r border-b border-line bg-elevated px-3 py-2 text-left text-[11px] font-semibold tracking-[0.06em] text-ink-faint uppercase">
-                Marker
+                Test
               </th>
               {dates.map((d) => {
                 const panels = panelByDate.get(d) ?? []
@@ -185,7 +184,6 @@ export function GridPage() {
   )
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 function ordinal(n: number): string {
   const teen = n % 100 >= 11 && n % 100 <= 13
   return n + (teen ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')
@@ -257,13 +255,15 @@ function MarkerRow({ marker, dates, mode }: { marker: MarkerSeries; dates: strin
 function cellStyle(r: Result, mode: ColorMode, stats: { mean: number; sd: number }, prev: Result | null): { bg: string | undefined; title: string } {
   const v = r.value_numeric
   if (mode === 'range') {
-    const st = rangeStatus(v, r.ref_low, r.ref_high, r.lab_flag)
+    const st = resultStatus(r)
+    const tone = statusTone(st)
     if (st === 'unknown') return { bg: undefined, title: 'No reference range reported' }
-    if (st === 'in') return { bg: undefined, title: 'Within reference range' }
-    const pos = v != null ? positionInRange(v, r.ref_low, r.ref_high) : null
-    const far = pos == null ? 0.5 : st === 'high' ? Math.min(1, (pos - 1) / 0.5) : Math.min(1, -pos / 0.5)
+    if (!tone) return { bg: undefined, title: 'Within reference range' }
+    // How far past the limit the value sits; a result flagged without a direction gets the middle shade.
+    const pos = v != null && st !== 'flagged' ? positionInRange(v, r.ref_low, r.ref_high) : null
+    const far = pos == null ? 0.5 : Math.max(0, Math.min(1, (st === 'high' ? pos - 1 : -pos) / 0.5))
     const pct = Math.round(14 + far * 26)
-    return { bg: `color-mix(in srgb, var(--color-${st}) ${pct}%, transparent)`, title: st === 'high' ? 'Above range' : 'Below range' }
+    return { bg: `color-mix(in srgb, var(--color-${tone}) ${pct}%, transparent)`, title: st === 'flagged' ? 'Flagged by the lab' : st === 'high' ? 'Above range' : 'Below range' }
   }
   if (v == null) return { bg: undefined, title: '' }
   if (mode === 'history') {

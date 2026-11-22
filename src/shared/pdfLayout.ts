@@ -29,12 +29,17 @@ export function layoutPage(items: TextItem[]): string {
     let text = ''
     let last: TextItem | null = null
     for (const w of line.items.sort((a, b) => a.x - b.x)) {
-      // Drop overprinted duplicates (same text drawn twice at ~the same spot).
-      if (last && last.str === w.str && Math.abs(last.x - w.x) < Math.max(charW * 2, last.width)) continue
+      // Drop overprinted duplicates: the same text drawn twice a fraction of a point apart to fake bold.
+      // Anything further apart is a second item ("9" then "9" is 99, and a second "Negative" is a second result).
+      if (last && last.str === w.str && Math.abs(last.x - w.x) < base * 0.1) continue
+      const touching = last !== null && w.x - (last.x + (last.width || 0)) < charW * 0.25
       last = w
-      const col = Math.max(0, Math.round((w.x - minX) / charW))
-      if (text.length < col) text += ' '.repeat(col - text.length)
-      else if (text && !text.endsWith(' ')) text += ' '
+      // Items that touch are one word, however the PDF split it ("13" then ".5" is 13.5).
+      if (!touching) {
+        const col = Math.max(0, Math.round((w.x - minX) / charW))
+        if (text.length < col) text += ' '.repeat(col - text.length)
+        else if (text && !text.endsWith(' ')) text += ' '
+      }
       text += w.str
     }
     out.push(text.replace(/\s+$/, ''))

@@ -34,9 +34,9 @@ export function CorrelationsPage() {
     let list = ds.markers.filter((m) => pointsOf(m).length >= Math.max(3, Math.min(min, 4)))
     if (ids.length) list = list.filter((m) => ids.includes(m.id))
     if (cat !== 'all') list = list.filter((m) => m.category === cat)
-    const order = sortCategories([...new Set(list.map((m) => m.category))], ds.preferences.section_order)
+    const order = sortCategories([...new Set(list.map((m) => m.category))])
     return list.sort((x, y) => order.indexOf(x.category) - order.indexOf(y.category) || x.name.localeCompare(y.name))
-  }, [ds.markers, ds.preferences.section_order, ids, cat, min])
+  }, [ds.markers, ids, cat, min])
 
   const matrix = useMemo(() => {
     const n = items.length
@@ -76,7 +76,7 @@ export function CorrelationsPage() {
   const mb = ds.markersById.get(b)
   const categories = sortCategories([...new Set(ds.markers.map((m) => m.category))])
 
-  if (ds.markers.length < 2) return <Empty title="Needs at least two markers" />
+  if (ds.markers.length < 2) return <Empty title="Needs at least two tests" />
 
   return (
     <div className="grid gap-4">
@@ -122,7 +122,7 @@ export function CorrelationsPage() {
         </div>
         <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
           <Chip active={cat === 'all' && !ids.length} onClick={() => update({ cat: null, m: null })}>
-            All markers
+            All tests
           </Chip>
           {categories.map((c) => (
             <Chip key={c} active={cat === c} onClick={() => setCat(cat === c ? 'all' : c)}>
@@ -135,7 +135,7 @@ export function CorrelationsPage() {
           </Chip>
           {ids.length ? (
             <Chip active onClick={() => setIds([])}>
-              {plural(ids.length, 'selected marker')} ×
+              {plural(ids.length, 'selected test')} ×
             </Chip>
           ) : null}
         </div>
@@ -162,7 +162,7 @@ export function CorrelationsPage() {
                 </div>
               </>
             ) : (
-              <Empty title="Not enough markers with repeated draws" icon="scatter" />
+              <Empty title="Not enough tests with repeated draws" icon="scatter" />
             )}
           </div>
           <div className="min-w-0">

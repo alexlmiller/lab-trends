@@ -1,5 +1,8 @@
-import { dateFromDay, dayNumber, formatDate } from './dates'
-import type { EventPeriod, TimelineEvent } from './types'
+import { formatDate, isValidDate } from './dates'
+import type { EventKind, EventPeriod, TimelineEvent } from './types'
+
+/** Every kind of timeline event, in the order they are offered. */
+export const EVENT_KINDS = ['medication', 'procedure', 'illness', 'lifestyle', 'location', 'other'] as const satisfies readonly EventKind[]
 
 export function periodLabel(p: EventPeriod): string {
   const start = formatDate(p.start_date)
@@ -22,7 +25,7 @@ export function chartOccurrences(events: TimelineEvent[]) {
   )
 }
 
-const calendarDate = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && dateFromDay(dayNumber(s)) === s
+const calendarDate = (s: unknown): s is string => typeof s === 'string' && isValidDate(s)
 
 export function validatedPeriods(input: unknown): EventPeriod[] {
   if (!Array.isArray(input) || !input.length) throw new Error('Add at least one date or period.')
