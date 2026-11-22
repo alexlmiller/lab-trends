@@ -109,14 +109,16 @@ All optional. Set them as variables or secrets on the Worker (**Settings > Varia
 | `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` | Trust only this Access application (team domain such as `<team>.cloudflareaccess.com`, and the application's audience tag) instead of the one seen at first sign-in. Set both: with only one, the app refuses every sign-in. |
 | `EXTRACTION_MODEL` | Model that reads PDF text. Default `@cf/deepseek-ai/deepseek-v4.1-flash-1017`. |
 | `VISION_MODEL` | Model that reads photos. Default: same as `EXTRACTION_MODEL`. |
-| `AI_GATEWAY_ID` | Route model calls through a named AI Gateway. |
+| `AI_GATEWAY_ID` | Route model calls through a named AI Gateway. Depending on that gateway's settings it logs or caches what passes through, which here is report text and photos. The Import page says when one is set. |
 
 The default model needs the Workers Paid plan ([Prerequisites](#prerequisites)). A model id that does not start with `@cf/` is not run by Cloudflare: report text and photos go to that provider, and the Import page says so.
 
 ## Privacy
 
 - Results, events and settings are in your D1 database. Uploaded files are in your R2 bucket, which has no public address. Both are in your Cloudflare account.
-- Spreadsheets are parsed inside the Worker. PDF text has names, dates of birth, record numbers, phone numbers and emails removed by pattern (`src/worker/redact.ts`), then goes to the extraction model. Photos go to the model as they are. The default model runs on Cloudflare Workers AI.
+- Spreadsheets are parsed inside the Worker. PDF text has names, dates of birth, record numbers, addresses, phone numbers and emails removed where the report labels them (`src/worker/redact.ts`), then goes to the extraction model. An identifier printed without a label can still reach the model. Photos go to the model as they are. A file's name is never sent. The default model runs on Cloudflare Workers AI.
+- Deleting is permanent. A deleted result, draw, test, import or person is removed from the database, and its uploaded files from R2. Discarding an import, or leaving a file out of one, deletes that upload. Only the owner can delete a person. D1 Time Travel can still restore the database to a point before a deletion, for 30 days on Workers Paid and 7 on Workers Free; it does not bring back files.
+- Everyone with access sees every person's results. Only the owner sees the list of who has access.
 - The pages load nothing from other sites: no fonts, analytics or scripts. `public/_headers` sets a content security policy that enforces this.
 - Worker logs hold request paths and error messages, not result values or report text.
 - An AI assistant connected over MCP receives whatever it reads, and so does the company that runs it.
@@ -133,21 +135,25 @@ git push
 
 Cloudflare rebuilds and redeploys on push, and the deploy applies new migrations first. If you deployed from a terminal: `git pull && npm install && npm run deploy`.
 
+When a release changes how results are read, the app brings saved rows up to date by itself over the first few requests after the deploy (`src/worker/upgrade.ts`): numbers, ranges and inferred flags are recomputed from the text each result was saved with.
+
 ## MCP server
 
-`/mcp` on the app's address is a remote MCP server (`createMcpHandler` from the Agents SDK, stateless Streamable HTTP, `src/worker/mcp/`). Settings in the app shows the URL and the steps for Claude.
+`/mcp` on the app's address is a remote MCP server (`createMcpHandler` from the MCP TypeScript SDK, stateless Streamable HTTP, `src/worker/mcp/`). Settings in the app shows the URL and the steps for Claude.
 
 - Sign-in is Access [managed OAuth](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/). Turn it on for the Access application; MCP clients then sign in through the normal Access login and requests carry the same `Cf-Access-Jwt-Assertion` as the web app.
-- Built for an assistant helping someone manage an ongoing condition. Orientation: `get_overview`. Read: people, tests, test history, draws, correlations, events, watchlist, `compare_around_event`. Write: events (periods with per-period notes; `add_periods`, `close_ongoing_on`), draw notes and tags (`update_draw`), watchlist, targets, result corrections, and new results through `draft_results` then `commit_results` or `discard_draft`. Prompts: `review_latest_results`, `prepare_visit_summary`, `treatment_response`.
-- Not exposed: deleting a test, and changing who has access (web app only). `delete_result` requires `confirm: true`.
-- Tools call the app's own `/api` routes in-process as the signed-in user, so edits write the same revisions as the web app, recorded as `<email> (via MCP)`.
+- Built for an assistant helping someone manage an ongoing condition. Orientation: `get_overview`. Read: people, tests, test history, draws, correlations, events, watchlist, `compare_around_event`. Write: events (periods with per-period notes; `add_periods`, `close_ongoing_on`, `delete_event`), draw notes and tags (`update_draw`), watchlist, targets, result corrections, and new results through `draft_results` then `commit_results` or `discard_draft`. Prompts: `review_latest_results`, `prepare_visit_summary`, `treatment_response`.
+- Not exposed: deleting a test, a draw or a person, and changing who has access (web app only). `delete_result` requires `confirm: true` and is permanent.
+- Tools write through the app's own `/api` routes in-process as the signed-in user, so they pass the same checks as the web app and are recorded as `<email> (via MCP)`.
+- A request that names another site as its origin is refused, and the endpoint sends no CORS headers: an MCP client is a program, not a page.
 - Inspect: `npx @modelcontextprotocol/inspector@latest` with the URL above.
 
 ## Backups and leaving
 
 - D1 Time Travel restores the database to an earlier point: `npx wrangler d1 time-travel info DB`.
-- Offline copy: `npx wrangler d1 export DB --remote --output <file>`. Settings > Export CSV gives a results file that can be imported again.
-- To remove everything, first detach the Worker from the queue: Cloudflare refuses to delete either while they are attached. Then delete the Worker, the queue, the D1 database and the R2 bucket.
+- Offline copy: `npx wrangler d1 export DB --remote --output <file>`. In the app, **Settings > Export CSV** gives a results file that can be imported again, and **Export everything** a JSON file with results, draws, events, targets and saved views. Neither includes the uploaded reports; those are in the R2 bucket.
+- To remove one person, use **Settings > Delete person**.
+- To remove everything, first detach the Worker from the queue: Cloudflare refuses to delete either while they are attached. Then delete the Worker, the queue and the D1 database. R2 refuses to delete a bucket that still holds files, so empty it first: in the dashboard, **Storage & databases > R2 >** the bucket **> Settings > Empty Bucket**. Then delete the bucket.
 
   ```bash
   npx wrangler queues consumer remove lab-trends-extractions lab-trends
@@ -157,9 +163,11 @@ Cloudflare rebuilds and redeploys on push, and the deploy applies new migrations
   npx wrangler r2 bucket delete lab-trends-files
   ```
 
+  Then check two places in the dashboard and delete what is left: the Worker's Access application (**Zero Trust > Access controls > Applications**), and the logs of an AI Gateway if you set one.
+
 ## Architecture
 
-One Worker (`src/worker`, Hono) serves the API under `/api/*`, the MCP server at `/mcp`, and the React app (`src/client`) as static assets.
+One Worker (`src/worker`, Hono) serves the API under `/api/*`, the MCP server at `/mcp`, and the React app (`src/client`) as static assets. Routes are in `src/worker/routes/`; the MCP SDK is loaded only for `/mcp` requests.
 
 | Binding | Resource | Use |
 |---|---|---|
@@ -172,14 +180,17 @@ Sign-in (`src/worker/auth.ts`): Access adds a signed token to each request; the 
 
 Import pipeline: upload → raw file to R2 → `extraction_candidates` row (a proposal) → review and edit in `/import/:batchId` → commit into `lab_panels`/`lab_results`. Nothing reaches charts without a commit. Research behind the import guide: `docs/lab-portal-exports.md`. The guide is also in the app (`src/client/components/ImportGuide.tsx`; keep both in step).
 
-- CSV/XLSX: parsed in the Worker (`src/shared/tabular.ts`, `src/shared/xlsx.ts`). Supports row-per-result files and the pivoted history sheet (`Test | Reference Range | Units | <date>…`, one tab per panel; a `Cycle Day` row becomes draw tags).
+- Limits: 20 files and 64 MB per upload, 20 MB per file, 5,000 results per file. A spreadsheet is read with fixed limits on its size (`src/shared/xlsx.ts`, `src/shared/zip.ts`).
+- Values, ranges, flags and dates (`src/shared/semantics.ts`, `src/shared/dates.ts`) give a number, a band, a flag or a date only when the whole text is understood. Anything else is kept as text. `test/parsers.test.ts` is the table of what reports print and what it means; add to it before changing a parser.
+- CSV/XLSX: parsed in the Worker (`src/shared/tabular.ts`, `src/shared/xlsx.ts`). Supports row-per-result files and the pivoted history sheet (`Test | Reference Range | Units | <date>…`, one tab per panel; a `Cycle Day` row becomes draw tags). A sheet, column or row that is left out is named in a warning on the draft.
 - PDF: text rebuilt with layout from pdf.js positions (`unpdf`, `src/shared/pdfLayout.ts`), identifiers redacted, then `EXTRACTION_MODEL` with a JSON schema. Falls back to `env.AI.toMarkdown` if pdf.js fails. Scanned PDFs without text: upload a photo instead.
 - Long PDFs are read in chunks of whole pages (`src/worker/chunking.ts`, about 5,000 characters, 4 at a time, up to 40 chunks), because one reply holds about 200 results. Later chunks also get the top of page 1 for the collection date. A reply that runs out of tokens is split and re-read; a chunk that still fails becomes a warning naming its pages. Panels from all chunks merge by collection date.
 - Images: sent as they are to `VISION_MODEL`.
 - Models are called with reasoning off and a JSON schema, plus one repair retry on invalid JSON. Any `env.AI.run()` id works; a catalog id such as `anthropic/claude-sonnet-…` routes through AI Gateway Unified Billing (needs credits).
-- Transient Workers AI errors (capacity, rate limits, timeouts) re-queue the file with backoff, up to 3 attempts; then it shows as failed with a retry button.
-- Review (`annotateDocument` in `src/worker/resolve.ts`) unticks rows already saved for that date, including a different saved value (likelier a misread than a correction). Ticking a differing row replaces the saved value on commit and writes a `result_revisions` row. A panel whose numbers match a saved draw within 5 days gets a "same draw?" hint that moves it to that date.
-- Commit merges into an existing draw on the same date and skips values already saved.
+- Transient Workers AI errors (capacity, rate limits, timeouts) re-queue the file with backoff, up to 3 attempts; then it shows as failed with a retry button. A file whose reading stopped without an answer is marked failed after 20 minutes (3 for a spreadsheet).
+- Review (`annotateDocument` in `src/worker/resolve.ts`) unticks rows already saved for that date, including a different saved value (likelier a misread than a correction). Ticking a differing row replaces the saved value on commit and keeps the old one in `result_revisions` until the result is deleted. A panel whose numbers match a saved draw within 5 days gets a "same draw?" hint that moves it to that date.
+- Commit (`src/worker/commit.ts`) claims the import first, so it is saved once however often it is asked. It merges into an existing draw on the same date and skips values already saved. One date holds one value per test: a second, different value in the same import is not saved and is listed after the commit.
+- Every upload that put a result on a draw is linked to it (`panel_files`) and deleted with the last draw that uses it.
 
 Draw dates are calendar dates (`draw_date` `YYYY-MM-DD`), never instants.
 
@@ -193,6 +204,8 @@ npm run db:seed:local   # optional: a fictional person with a few draws
 npm run dev             # http://localhost:5173, entirely local
 npm run check           # typecheck + tests + build
 ```
+
+The tests run the API against Node's built-in SQLite with the real migrations (`test/helpers.ts`), so they need Node 22.13 or newer. `test/queries.test.ts` fails when a statement the app runs often reads a whole table or sorts its rows.
 
 `DEV_AUTH_EMAIL` signs every request in as that address, as the owner, on `localhost` only. Without it you get the setup page, which is how to work on it. There is deliberately no `.dev.vars.example`: the deploy button would ask every deployer for its values.
 

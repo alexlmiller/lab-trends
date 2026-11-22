@@ -64,6 +64,12 @@ const SPREADSHEET: Source = {
     <>
       <b>Or one row per test,</b> with <code>Test</code>, <code>Reference range</code> and <code>Units</code> as the first three columns and a column for each date. Each sheet tab is read.
     </>,
+    <>
+      <b>Dates:</b> <code>2025-03-04</code> is always safe. <code>3/4/2025</code> is read as month/day/year unless a date in the same sheet has a first number above 12.
+    </>,
+    <>
+      <b>Numbers:</b> <code>1,500</code> is read as 1500 and <code>3,8</code> as 3.8. Write decimals with a point to leave no doubt.
+    </>,
   ],
 }
 
