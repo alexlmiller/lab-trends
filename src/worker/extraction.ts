@@ -5,7 +5,7 @@ import { normalizeCategory } from '../shared/categories'
 import { parseLooseDate } from '../shared/dates'
 import { extractTextItems } from 'unpdf'
 import { layoutPage } from '../shared/pdfLayout'
-import { normalizeFlag, normalizeReferenceText } from '../shared/semantics'
+import { DECIMAL_COMMA_NOTE, normalizeFlag, normalizeReferenceText, usesDecimalComma } from '../shared/semantics'
 import { parseCsv, sheetsToDocument } from '../shared/tabular'
 import type { ExtractedPanel, ExtractionDocument, SourceKind } from '../shared/types'
 import { readXlsx } from '../shared/xlsx'
@@ -21,10 +21,10 @@ export type ExtractionOutput = {
   privacyMode: 'local' | 'cloudflare_ai' | 'cloudflare_ai_redacted' | 'third_party_redacted' | 'third_party'
 }
 
-export function extractTabular(bytes: ArrayBuffer, kind: 'csv' | 'xlsx', filename: string): ExtractionOutput {
+export async function extractTabular(bytes: ArrayBuffer, kind: 'csv' | 'xlsx', filename: string): Promise<ExtractionOutput> {
   const sheets =
     kind === 'xlsx'
-      ? readXlsx(new Uint8Array(bytes))
+      ? await readXlsx(new Uint8Array(bytes))
       : [{ name: filename.replace(/\.[^.]+$/, ''), rows: parseCsv(new TextDecoder().decode(bytes)) }]
   return { document: sheetsToDocument(sheets, kind), model: null, privacyMode: 'local' }
 }
@@ -105,27 +105,22 @@ class Overflow extends Error {
   }
 }
 
-export async function extractWithModel(
-  env: Env,
-  kind: Extract<SourceKind, 'pdf' | 'image'>,
-  bytes: ArrayBuffer,
-  filename: string,
-  mime: string,
-): Promise<ExtractionOutput> {
+/** The file's name never goes to the model: people name reports after the patient. */
+export async function extractWithModel(env: Env, kind: Extract<SourceKind, 'pdf' | 'image'>, bytes: ArrayBuffer, mime: string): Promise<ExtractionOutput> {
   const models = modelsFor(env)
   const model = kind === 'image' ? models.photo : models.pdf
   const firstParty = isCloudflareModel(model)
   if (kind === 'image') {
     const read = await readOnce(env, model, [
-      { type: 'text', text: `${preamble(filename)}\n\nExtract the lab results shown in this image.` },
+      { type: 'text', text: `${PREAMBLE}\n\nExtract the lab results shown in this image.` },
       { type: 'image_url', image_url: { url: `data:${mime || 'image/png'};base64,${toBase64(bytes)}` } },
     ])
     return { document: finishDocument(kind, read.panels, read.warnings), model, privacyMode: firstParty ? 'cloudflare_ai' : 'third_party' }
   }
 
-  const pages = (await pdfPages(env, bytes, filename)).map((page) => redact(page).text)
+  const pages = (await pdfPages(env, bytes)).map(redact)
   if (denseLength(pages.join(' ')) < 40) throw new Error('This PDF has no text layer (it may be a scan). Upload a photo or screenshot of the report instead.')
-  const read = await readPages(env, model, filename, pages)
+  const read = await readPages(env, model, pages)
   return {
     document: finishDocument(kind, read.panels, read.warnings),
     model,
@@ -134,7 +129,7 @@ export async function extractWithModel(
 }
 
 /** Read page texts in chunks, a few at a time; a chunk that fails outright becomes a warning. */
-export async function readPages(env: Env, model: string, filename: string, pages: string[]): Promise<Read> {
+export async function readPages(env: Env, model: string, pages: string[]): Promise<Read> {
   const all = chunkPages(pages)
   const chunks = all.slice(0, MAX_CHUNKS)
   const warnings: string[] = []
@@ -146,7 +141,7 @@ export async function readPages(env: Env, model: string, filename: string, pages
   const failures: unknown[] = []
   const reads = await mapLimit(chunks, PARALLEL_CHUNKS, async (chunk, i) => {
     try {
-      return await readText(env, model, filename, chunk, pages.length, { header: i > 0 ? header : '', partial: chunks.length > 1 }, 0)
+      return await readText(env, model, chunk, pages.length, { header: i > 0 ? header : '', partial: chunks.length > 1 }, 0)
     } catch (err) {
       // Retry the whole file for capacity errors; otherwise keep what the other chunks found.
       if (chunks.length === 1 || isTransient(err)) throw err
@@ -159,16 +154,8 @@ export async function readPages(env: Env, model: string, filename: string, pages
   return { panels: reads.flatMap((r) => r.panels), warnings: [...warnings, ...reads.flatMap((r) => r.warnings)] }
 }
 
-async function readText(
-  env: Env,
-  model: string,
-  filename: string,
-  chunk: Chunk,
-  totalPages: number,
-  context: { header: string; partial: boolean },
-  depth: number,
-): Promise<Read> {
-  const lines = [preamble(filename)]
+async function readText(env: Env, model: string, chunk: Chunk, totalPages: number, context: { header: string; partial: boolean }, depth: number): Promise<Read> {
+  const lines = [PREAMBLE]
   if (context.header) {
     lines.push(
       '',
@@ -185,7 +172,7 @@ async function readText(
     const pieces = splitText(chunk.text, Math.ceil(denseLength(chunk.text) / 2))
     if (pieces.length < 2) throw err
     const parts = await Promise.all(
-      pieces.map((text, i) => readText(env, model, filename, { text, pages: chunk.pages }, totalPages, { header: i > 0 ? context.header || headerOf(chunk.text) : context.header, partial: true }, depth + 1)),
+      pieces.map((text, i) => readText(env, model, { text, pages: chunk.pages }, totalPages, { header: i > 0 ? context.header || headerOf(chunk.text) : context.header, partial: true }, depth + 1)),
     )
     return { panels: parts.flatMap((p) => p.panels), warnings: parts.flatMap((p) => p.warnings) }
   }
@@ -216,7 +203,7 @@ async function readOnce(env: Env, model: string, user: unknown[]): Promise<Read>
   return readPanels(parsed)
 }
 
-const preamble = (filename: string) => `Prompt version: ${PROMPT_VERSION}\nSource file: ${filename}\n\nExtraction rules:\n${RULES}`
+const PREAMBLE = `Prompt version: ${PROMPT_VERSION}\n\nExtraction rules:\n${RULES}`
 const fence = (text: string) => '```\n' + text + '\n```'
 const headerOf = (text: string) => text.split('\n').slice(0, 40).join('\n').slice(0, 2_000)
 const pageLabel = ([a, b]: [number, number]) => (a === b ? `Page ${a}` : `Pages ${a}–${b}`)
@@ -284,7 +271,7 @@ function modelText(raw: unknown): string {
 }
 
 /** Layout-preserving text per page via pdf.js; falls back to Workers AI markdown conversion. */
-async function pdfPages(env: Env, bytes: ArrayBuffer, filename: string): Promise<string[]> {
+async function pdfPages(env: Env, bytes: ArrayBuffer): Promise<string[]> {
   try {
     const { items } = await extractTextItems(new Uint8Array(bytes.slice(0)))
     const pages = items.map((page) => layoutPage(page.map((i) => ({ str: i.str, x: i.x, y: i.y, width: i.width, fontSize: i.fontSize }))))
@@ -292,7 +279,7 @@ async function pdfPages(env: Env, bytes: ArrayBuffer, filename: string): Promise
   } catch (err) {
     console.error('pdf.js text extraction failed', logMessage(err))
   }
-  const converted = await env.AI.toMarkdown({ name: filename, blob: new Blob([bytes], { type: 'application/pdf' }) })
+  const converted = await env.AI.toMarkdown({ name: 'report.pdf', blob: new Blob([bytes], { type: 'application/pdf' }) })
   const result = Array.isArray(converted) ? converted[0] : converted
   if (!result || result.format === 'error') throw new Error(`Could not read PDF text: ${(result as { error?: string })?.error ?? 'conversion failed'}`)
   return [String(result.data ?? '')]
@@ -357,6 +344,9 @@ export function finishDocument(kind: SourceKind, panels: ExtractedPanel[], warni
   const merged = mergePanels(panels).filter((p) => p.results.length)
   const notes = [...new Set(warnings)]
   if (!merged.length) notes.push('No lab results were found in this file.')
+  // A long report is read in pieces, and a piece can lose sight of the date its results belong to.
+  if (new Set(merged.map((p) => p.draw_date).filter(Boolean)).size > 1) notes.push('This report has results from more than one collection date. Check that each result is under the right date.')
+  if (merged.some((p) => p.results.some((r) => usesDecimalComma(r.raw_value)))) notes.push(DECIMAL_COMMA_NOTE)
   for (const p of merged) if (!p.draw_date) p.warnings = [...(p.warnings ?? []), 'Collection date not found. Set it before committing.']
   return { source_kind: kind, panels: merged, document_warnings: notes }
 }

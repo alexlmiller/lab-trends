@@ -12,12 +12,12 @@
 //  z     – standard deviations from the series' mean within the window.
 //  pct   – % change from the first draw in the window.
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
-import { formatDate } from '../../shared/dates'
+import { dateFromDay, dayNumber, formatDate } from '../../shared/dates'
 import { mean, stdev } from '../../shared/stats'
-import { chartOccurrences } from '../../shared/events'
+import { chartOccurrences, periodLabel } from '../../shared/events'
 import type { TimelineEvent } from '../../shared/types'
 import { cx } from '../components/ui'
-import type { Point } from '../lib/series'
+import { statusColor, type Point } from '../lib/series'
 import { formatTick, shouldAutoLog, timeTicks, useElementWidth, yScale, type YScale } from './scale'
 
 export type ChartSeries = {
@@ -27,7 +27,6 @@ export type ChartSeries = {
   units: string | null
   points: Point[]
   target?: { low: number | null; high: number | null } | null
-  dashed?: boolean
 }
 
 export type ScaleMode = 'own' | 'range' | 'z' | 'pct'
@@ -47,7 +46,6 @@ type Props = {
   onHoverDay?: (day: number | null) => void
   onPointClick?: (point: Point, series: ChartSeries) => void
   showXAxis?: boolean
-  emptyLabel?: ReactNode
   /** Floating tooltip; turn off when values are displayed alongside the chart. */
   tooltip?: boolean
   /** Soft gradient under the first series (single-series charts). */
@@ -99,7 +97,6 @@ export function TimeSeriesChart({
   onHoverDay,
   onPointClick,
   showXAxis = true,
-  emptyLabel,
   tooltip = true,
   area = false,
   endTag = false,
@@ -119,7 +116,7 @@ export function TimeSeriesChart({
   const [d0, d1] = domain
   const visibleEvents = chartOccurrences(events).filter((e) => {
     const end = e.end_date ? e.end_date : e.ongoing ? '9999-12-31' : e.start_date
-    return end >= isoOf(d0) && e.start_date <= isoOf(d1)
+    return end >= dateFromDay(d0) && e.start_date <= dateFromDay(d1)
   })
   const narrow = width < 560
   const labelGutter = endLabels ? (narrow ? 64 : 110) : endTag ? (narrow ? 44 : 62) : narrow ? 8 : 12
@@ -142,8 +139,8 @@ export function TimeSeriesChart({
   }, [picked])
   /** Where an event period sits in the lane block: start, end (null for a single day) and bar y. */
   const markOf = (e: TimelineEvent, lane: number) => {
-    const x0 = xOf(Math.max(d0, dayOf(e.start_date)))
-    const endDay = e.end_date ? dayOf(e.end_date) : e.ongoing ? d1 : null
+    const x0 = xOf(Math.max(d0, dayNumber(e.start_date)))
+    const endDay = e.end_date ? dayNumber(e.end_date) : e.ongoing ? d1 : null
     const x1 = endDay != null ? xOf(Math.min(d1, endDay)) : null
     return { x0, x1: x1 != null && x1 - x0 > 2 ? x1 : null, by: compactEvents ? 6 + lane * laneH : 22 + lane * laneH }
   }
@@ -290,8 +287,8 @@ export function TimeSeriesChart({
 
           {/* Events: faint spans and rules through the plot, labelled lane above it. */}
           {visibleEvents.map((e) => {
-            const x0 = xOf(Math.max(d0, dayOf(e.start_date)))
-            const endDay = e.end_date ? dayOf(e.end_date) : e.ongoing ? d1 : null
+            const x0 = xOf(Math.max(d0, dayNumber(e.start_date)))
+            const endDay = e.end_date ? dayNumber(e.end_date) : e.ongoing ? d1 : null
             const x1 = endDay != null ? xOf(Math.min(d1, endDay)) : null
             const color = EVENT_COLORS[e.kind] ?? EVENT_COLORS.other
             return (
@@ -325,7 +322,7 @@ export function TimeSeriesChart({
                         {entry.label}
                       </text>
                     ) : null}
-                    <title>{`${e.label} · ${eventDates(e)}`}</title>
+                    <title>{`${e.label} · ${periodLabel(e)}`}</title>
                   </g>
                 )
               })
@@ -406,7 +403,6 @@ export function TimeSeriesChart({
                 fill="none"
                 stroke={p.s.color}
                 strokeWidth={i === 0 ? 2 : 1.75}
-                strokeDasharray={p.s.dashed ? '6 4' : undefined}
                 strokeLinejoin="round"
                 strokeLinecap="round"
               />
@@ -426,8 +422,8 @@ export function TimeSeriesChart({
                 const cxp = xOf(x.day)
                 const active = hover === x.day
                 const isLast = p === primary && x === lastPrimary
-                const out = x.status === 'high' || x.status === 'low'
-                const fill = x.status === 'high' ? 'var(--color-high)' : x.status === 'low' ? 'var(--color-low)' : p.s.color
+                const out = statusColor(x.status) !== null
+                const fill = statusColor(x.status) ?? p.s.color
                 const r = (out ? 4.5 : 3.5) + (isLast ? 1 : 0)
                 return (
                   <g key={`pt-${p.s.id}-${x.resultId}`}>
@@ -457,7 +453,7 @@ export function TimeSeriesChart({
                 height={22}
                 rx={6}
                 fill="var(--color-surface)"
-                stroke={lastPrimary.status === 'high' ? 'var(--color-high)' : lastPrimary.status === 'low' ? 'var(--color-low)' : 'var(--color-line-strong)'}
+                stroke={statusColor(lastPrimary.status) ?? 'var(--color-line-strong)'}
               />
               <text x={xOf(lastPrimary.day) + 16} y={lastPrimary.y + 4} fontSize={12} fontWeight={700} fill="var(--color-ink)" className="tabular">
                 {lastPrimary.raw}
@@ -471,7 +467,7 @@ export function TimeSeriesChart({
       ) : null}
 
       {!hasData && width > 0 ? (
-        <div className="absolute inset-0 grid place-items-center text-[13px] text-ink-faint">{emptyLabel ?? 'No numeric results in this range'}</div>
+        <div className="absolute inset-0 grid place-items-center text-[13px] text-ink-faint">No numeric results in this range</div>
       ) : null}
 
       {laneCount && width > 0
@@ -488,7 +484,7 @@ export function TimeSeriesChart({
                 key={`evb-${e.id}`}
                 type="button"
                 data-event-ui
-                aria-label={`${e.label}, ${eventDates(e)}`}
+                aria-label={`${e.label}, ${periodLabel(e)}`}
                 aria-expanded={picked === e.id}
                 onClick={() => setPicked(picked === e.id ? null : e.id)}
                 className="absolute cursor-pointer rounded-sm"
@@ -511,7 +507,7 @@ export function TimeSeriesChart({
             style={{ left: Math.max(4, Math.min((x1 == null ? x0 : (x0 + x1) / 2) - 24, width - 224)), top: laneBlock + 2 }}
           >
             <div className="font-semibold text-ink">{e.label}</div>
-            <div className="text-[11.5px] text-ink-dim tabular">{eventDates(e)}</div>
+            <div className="text-[11.5px] text-ink-dim tabular">{periodLabel(e)}</div>
             {note ? <div className="mt-1 line-clamp-3 text-[11.5px] text-ink-dim">{note}</div> : null}
           </div>
         )
@@ -522,7 +518,7 @@ export function TimeSeriesChart({
 }
 
 function Tooltip({ day, plotted, events, x, width, mode }: { day: number; plotted: Plotted[]; events: TimelineEvent[]; x: number; width: number; mode: ScaleMode }) {
-  const date = isoOf(day)
+  const date = dateFromDay(day)
   const rows = plotted.map((p) => {
     const exact = p.pts.find((pt) => pt.day === day)
     const near = exact ?? p.pts.reduce<PlotPoint | undefined>((best, pt) => (Math.abs(pt.day - day) <= 21 && (!best || Math.abs(pt.day - day) < Math.abs(best.day - day)) ? pt : best), undefined)
@@ -544,7 +540,7 @@ function Tooltip({ day, plotted, events, x, width, mode }: { day: number; plotte
           <div key={p.s.id} className="flex items-baseline gap-2">
             <span className="inline-block h-2 w-2 shrink-0 translate-y-[-1px] rounded-full" style={{ background: p.s.color }} />
             <span className="min-w-0 truncate text-ink-dim">{p.s.label}</span>
-            <span className={cx('ml-auto pl-2 font-semibold tabular', pt?.status === 'high' && 'text-high', pt?.status === 'low' && 'text-low', !pt && 'text-ink-faint')}>
+            <span className={cx('ml-auto pl-2 font-semibold tabular', (pt?.status === 'high' || pt?.status === 'flagged') && 'text-high', pt?.status === 'low' && 'text-low', !pt && 'text-ink-faint')}>
               {pt ? `${pt.raw} ${pt.units ?? ''}` : '—'}
               {pt && mode === 'range' ? <span className="font-normal text-ink-faint"> · {rangeWords(pt.nv)}</span> : null}
               {pt && mode === 'z' ? <span className="font-normal text-ink-faint"> · {pt.nv.toFixed(1)} SD</span> : null}
@@ -648,8 +644,8 @@ function layoutEventLanes(events: TimelineEvent[], d0: number, d1: number, xOf: 
   const spans = [...groups.values()].map((group) => {
     const periods = group
       .map((e) => {
-        const start = xOf(Math.max(d0, dayOf(e.start_date)))
-        const end = e.end_date ? xOf(Math.min(d1, dayOf(e.end_date))) : e.ongoing ? xOf(d1) : start
+        const start = xOf(Math.max(d0, dayNumber(e.start_date)))
+        const end = e.end_date ? xOf(Math.min(d1, dayNumber(e.end_date))) : e.ongoing ? xOf(d1) : start
         return { id: e.id, start, end }
       })
       .sort((a, b) => a.start - b.start)
@@ -684,19 +680,6 @@ function rangeWords(nv: number): string {
   return `${Math.round(nv * 100)}% of the way to the upper limit`
 }
 
-function eventDates(e: Pick<TimelineEvent, 'start_date' | 'end_date' | 'ongoing'>): string {
-  if (e.end_date && e.end_date !== e.start_date) return `${formatDate(e.start_date)} → ${formatDate(e.end_date)}`
-  return e.ongoing ? `${formatDate(e.start_date)} → ongoing` : formatDate(e.start_date)
-}
-
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, Math.max(3, n - 1))}…` : s
-}
-
-const MS_DAY = 86_400_000
-function isoOf(day: number): string {
-  return new Date(day * MS_DAY).toISOString().slice(0, 10)
-}
-function dayOf(date: string): number {
-  return Math.round(Date.parse(`${date.slice(0, 10)}T00:00:00Z`) / MS_DAY)
 }

@@ -1,7 +1,7 @@
 // Derive chartable points from committed results. Raw values stay intact for
 // display; numeric value is only used for position.
 import { dayNumber, todayDate } from '../../shared/dates'
-import { rangeStatus, type RangeStatus } from '../../shared/semantics'
+import { resultStatus, statusTone, type RangeStatus } from '../../shared/semantics'
 import type { MarkerSeries, Result } from '../../shared/types'
 import { unitKey } from '../../shared/units'
 
@@ -31,7 +31,7 @@ export function toPoint(r: Result): Point | null {
     value: r.value_numeric,
     raw: r.raw_value,
     censored: c.startsWith('<') ? '<' : c.startsWith('>') ? '>' : null,
-    status: rangeStatus(r.value_numeric, r.ref_low, r.ref_high, r.lab_flag),
+    status: resultStatus(r),
     flag: r.lab_flag,
     refLow: r.ref_low,
     refHigh: r.ref_high,
@@ -54,13 +54,17 @@ export function pointsOf(m: MarkerSeries): Point[] {
   return pts
 }
 
-export function latestResult(m: MarkerSeries): Result | null {
-  return m.results.length ? m.results[m.results.length - 1] : null
+/** The colour a point outside its range is drawn in, or null for one drawn in its series colour. */
+export function statusColor(status: RangeStatus): string | null {
+  const tone = statusTone(status)
+  return tone ? `var(--color-${tone})` : null
 }
 
-export function statusOf(r: Result | null): RangeStatus {
-  if (!r) return 'unknown'
-  return rangeStatus(r.value_numeric, r.ref_low, r.ref_high, r.lab_flag)
+/** How a status reads after a value: "5.9 above range". */
+export const STATUS_PHRASE: Record<RangeStatus, string> = { low: 'below range', high: 'above range', flagged: 'flagged by the lab', in: 'in range', unknown: 'no range reported' }
+
+export function latestResult(m: MarkerSeries): Result | null {
+  return m.results.length ? m.results[m.results.length - 1] : null
 }
 
 export function unitsSummary(m: MarkerSeries): { units: string | null; mixed: { units: string; count: number }[] } {
@@ -111,10 +115,6 @@ export function windowFor(range: RangeKey, allPoints: Pick<Point, 'day'>[][]): [
 export function latestDay(allPoints: Pick<Point, 'day'>[][]): number {
   const today = dayNumber(todayDate())
   return Math.max(today, ...allPoints.flat().map((p) => p.day))
-}
-
-export function inWindow(points: Point[], [start, end]: [number, number]): Point[] {
-  return points.filter((p) => p.day >= start && p.day <= end)
 }
 
 export const SERIES_COLORS = ['var(--color-s1)', 'var(--color-s2)', 'var(--color-s3)', 'var(--color-s4)', 'var(--color-s5)', 'var(--color-s6)']

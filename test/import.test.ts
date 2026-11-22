@@ -84,16 +84,17 @@ describe('reading long PDFs', () => {
       Array.from({ length: 6 }, (_, b) => Array.from({ length: 10 }, (_, i) => `T${p}_${b}_${i} ${date} ${i}.5`).join('\n')).join('\n\n'),
     )
     const { env, calls } = fakeEnv(50)
-    const read = await readPages(env, 'fake', 'history.pdf', pages)
+    const read = await readPages(env, 'fake', pages)
     const doc = finishDocument('pdf', read.panels, read.warnings)
     expect(doc.panels.map((p) => [p.draw_date, p.results.length])).toEqual(dates.map((d) => [d, 60]))
-    expect(doc.document_warnings).toEqual([])
+    // Several dates in one report is worth a second look, and the only thing said about this one.
+    expect(doc.document_warnings).toEqual(['This report has results from more than one collection date. Check that each result is under the right date.'])
     expect(calls()).toBeGreaterThan(1)
   })
   it('keeps the other chunks when one cannot be read', async () => {
     const filler = (tag: string) => Array.from({ length: 40 }, (_, i) => `${tag} filler line ${i} `.padEnd(70, '.')).join('\n')
     const pages = [`A 2026-01-05 1.5\n${filler('a')}`, `BROKEN\n${filler('b')}`, `C 2026-01-05 3.5\n${filler('c')}`]
-    const read = await readPages(fakeEnv(50).env, 'fake', 'report.pdf', pages)
+    const read = await readPages(fakeEnv(50).env, 'fake', pages)
     const doc = finishDocument('pdf', read.panels, read.warnings)
     expect(doc.panels[0].results.map((r) => r.raw_name)).toEqual(['A', 'C'])
     expect(doc.document_warnings).toEqual(['Page 2 could not be read, so results there are missing. Check them against the report.'])
